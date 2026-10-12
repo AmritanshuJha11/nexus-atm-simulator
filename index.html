@@ -1,0 +1,2018 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NexusBank ATM & Digital Banking Simulator</title>
+  <meta name="description" content="Hyper-realistic interactive ATM simulation and digital banking hub. Check balance, withdraw cash, deposit funds, transfer money, activate new ATM cards, and manage virtual wallets.">
+  
+  <!-- Modern Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- Modern Favicon & App Icons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192x192.png">
+  <link rel="apple-touch-icon" href="assets/nexus-icon-dark.png">
+  <meta name="theme-color" content="#080c14">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+  <div class="bg-glow bg-glow-3"></div>
+
+  <!-- Main App Shell -->
+  <div class="app-shell">
+    
+    <!-- Top Header & Navigation -->
+    <header class="top-nav">
+      <div class="nav-brand" title="NexusBank - Smart ATM & Digital Banking Hub">
+        <div class="brand-icon">
+          <img src="assets/nexus-icon-dark.png" alt="NexusBank Logo" class="brand-logo-img">
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">NEXUS<span>BANK</span></span>
+          <span class="brand-subtitle">Smart ATM & Digital Banking Hub</span>
+        </div>
+      </div>
+
+      <div class="nav-center-status">
+        <button class="terminal-status-pill clickable" id="atmStatusPill" title="Click to view ATM Hardware Diagnostics & Vault Cassettes">
+          <span class="pulse-dot"></span>
+          <span class="status-text">ATM ID: <strong id="atmIdDisplay">NX-8840-NY</strong></span>
+          <span class="status-divider">•</span>
+          <span class="status-online"><i class="fa-solid fa-signal"></i> Network 100% Online</span>
+          <span class="status-diag-tag"><i class="fa-solid fa-server"></i> Vault Diag</span>
+        </button>
+      </div>
+
+      <div class="nav-actions">
+        <!-- Currency Selector -->
+        <div class="control-group">
+          <label for="currencySelect" class="sr-only">Currency</label>
+          <div class="custom-select-wrapper">
+            <i class="fa-solid fa-coins select-icon"></i>
+            <select id="currencySelect" class="nav-select" title="Change currency">
+              <option value="INR" selected>INR (₹)</option>
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="JPY">JPY (¥)</option>
+              <option value="CAD">CAD (C$)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Sound FX Toggle -->
+        <button id="soundToggleBtn" class="icon-btn active" title="Toggle Sound FX (Synthesized Audio)" aria-label="Toggle Sound">
+          <i class="fa-solid fa-volume-high"></i>
+        </button>
+
+        <!-- Voice Guidance Toggle -->
+        <button id="voiceToggleBtn" class="icon-btn" title="Toggle Spoken Voice Guidance" aria-label="Toggle Voice Guidance">
+          <i class="fa-solid fa-headset"></i>
+        </button>
+
+        <!-- Two-Way Voice Command Assistant Microphone -->
+        <button id="voiceCommandMicBtn" class="icon-btn mic-btn" title="Voice Command Assistant (Click and speak commands like 'Fast Cash 2000', 'Check Balance', 'Eject')" aria-label="Voice Command Assistant">
+          <i class="fa-solid fa-microphone"></i>
+          <span class="mic-pulse-ring"></span>
+        </button>
+
+        <!-- ATM Hardware Diagnostics Quick Button -->
+        <button id="navDiagnosticsBtn" class="icon-btn diag-btn" title="ATM Hardware Diagnostics & Vault Cassettes" aria-label="ATM Diagnostics">
+          <i class="fa-solid fa-microchip"></i>
+        </button>
+
+        <!-- Theme Selector -->
+        <div class="theme-switcher">
+          <button class="theme-btn active" data-theme="dark" title="Cyber Dark Theme"><i class="fa-solid fa-moon"></i></button>
+          <button class="theme-btn" data-theme="neon" title="Neon Blue Theme"><i class="fa-solid fa-bolt"></i></button>
+          <button class="theme-btn" data-theme="light" title="Clean Light Theme"><i class="fa-solid fa-sun"></i></button>
+          <button class="theme-btn" data-theme="retro" title="Retro Classic ATM"><i class="fa-solid fa-terminal"></i></button>
+        </div>
+
+        <!-- View Mode Switcher on mobile/compact -->
+        <div class="view-switch-tabs">
+          <button class="view-tab-btn active" data-view="kiosk"><i class="fa-solid fa-cash-register"></i> ATM Kiosk</button>
+          <button class="view-tab-btn" data-view="dashboard"><i class="fa-solid fa-wallet"></i> Card & Hub</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Dynamic Layout Container -->
+    <main class="main-layout-container">
+      
+      <!-- ======================================================== -->
+      <!-- LEFT SECTION: PHOTOREALISTIC PHYSICAL ATM MACHINE KIOSK  -->
+      <!-- ======================================================== -->
+      <section class="atm-kiosk-section" id="kioskSection">
+        <div class="atm-chassis">
+          
+          <!-- ATM Top Illuminated Header -->
+          <div class="atm-marquee">
+            <div class="marquee-brand">
+              <img src="assets/nexus-icon-dark.png" alt="NexusBank" class="marquee-logo-icon">
+              <span>NEXUS EXPRESS 24/7 ATM</span>
+            </div>
+            <div class="camera-lens interactive-camera" id="atmCameraLensBtn" title="ATM Security Camera (Click for Live CCTV Feed / Face-ID Scan)">
+              <span class="lens-glass"></span>
+              <span class="cam-led active-cam-led" id="topCamLed"></span>
+              <span class="cam-pulse-ring"></span>
+              <span class="cam-tooltip"><i class="fa-solid fa-video"></i> Live CCTV</span>
+            </div>
+            <div class="marquee-networks">
+              <span class="badge-visa">VISA</span>
+              <span class="badge-mc">Mastercard</span>
+              <span class="badge-rupay">RuPay</span>
+              <span class="badge-cirrus">Cirrus</span>
+            </div>
+          </div>
+
+          <!-- Interactive Picture-in-Picture CCTV Surveillance Feed -->
+          <div class="cctv-monitor-widget" id="cctvMonitorWidget" style="display: none;">
+            <div class="cctv-header">
+              <div class="cctv-status">
+                <span class="rec-dot"></span>
+                <span>CCTV #CAM-01 • LIVE SURVEILLANCE</span>
+              </div>
+              <div class="cctv-actions">
+                <button class="cctv-icon-btn" id="cctvNightVisionToggle" title="Toggle Night Vision Phosphor Filter"><i class="fa-solid fa-eye"></i></button>
+                <button class="cctv-icon-btn close" id="closeCctvBtn" title="Close CCTV Feed">&times;</button>
+              </div>
+            </div>
+            <div class="cctv-viewport">
+              <video id="cctvVideoFeed" autoplay playsinline muted></video>
+              <div class="cctv-overlay-grid"></div>
+              <div class="cctv-scanline"></div>
+              <div class="cctv-timecode" id="cctvTimecode">2026-10-02 12:15:00 UTC</div>
+              <div class="cctv-fps">30.0 FPS • ENCRYPTED</div>
+              <div class="cctv-face-box" id="cctvFaceBox">
+                <span class="box-tag">SUBJECT DETECTED • 1080P</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Main Screen & Bezel Unit -->
+          <div class="atm-screen-bezel">
+            
+            <!-- Left Side Physical Buttons (F1 - F4) -->
+            <div class="side-keys side-keys-left">
+              <button class="side-key" id="btnF1" data-key="F1" title="Side Key F1">
+                <span class="key-indicator"></span>
+                <span class="key-label">F1</span>
+              </button>
+              <button class="side-key" id="btnF2" data-key="F2" title="Side Key F2">
+                <span class="key-indicator"></span>
+                <span class="key-label">F2</span>
+              </button>
+              <button class="side-key" id="btnF3" data-key="F3" title="Side Key F3">
+                <span class="key-indicator"></span>
+                <span class="key-label">F3</span>
+              </button>
+              <button class="side-key" id="btnF4" data-key="F4" title="Side Key F4">
+                <span class="key-indicator"></span>
+                <span class="key-label">F4</span>
+              </button>
+            </div>
+
+            <!-- The Interactive ATM Digital Display Screen -->
+            <div class="atm-display" id="atmDisplay">
+              <div class="screen-scanlines"></div>
+              <div class="screen-ambient-glow"></div>
+              
+              <!-- Screen Header Status Bar -->
+              <div class="atm-screen-header">
+                <div class="screen-time" id="screenClock">12:00:00 PM</div>
+                <div class="screen-title" id="screenHeaderTitle">
+                  <img src="assets/nexus-icon-dark.png" class="screen-header-logo-icon" alt="">
+                  <span>NEXUS SECURE TERMINAL</span>
+                </div>
+                <div class="screen-session" id="screenSessionIndicator">
+                  <span class="session-badge idle" id="sessionBadge">READY</span>
+                </div>
+              </div>
+
+              <!-- Interactive Voice Command Assistant Live Floating HUD -->
+              <div class="voice-assistant-hud" id="voiceAssistantHud" style="display: none;">
+                <div class="voice-wave-animation">
+                  <span class="vbar"></span><span class="vbar"></span><span class="vbar"></span><span class="vbar"></span><span class="vbar"></span>
+                </div>
+                <div class="voice-hud-text">
+                  <span class="voice-state-title" id="voiceHudTitle"><i class="fa-solid fa-microphone"></i> Listening for Voice Command...</span>
+                  <span class="voice-state-sub" id="voiceHudSub">Try: "Fast Cash 2000", "Check Balance", "Deposit", "Eject Card"</span>
+                </div>
+                <button class="voice-hud-close" id="closeVoiceHudBtn" title="Close Voice Assistant">&times;</button>
+              </div>
+
+              <!-- ============================================== -->
+              <!-- ATM SCREENS (DYNAMICALLY SWITCHED VIA JAVASCRIPT) -->
+              <!-- ============================================== -->
+              <div class="screen-viewport" id="screenViewport">
+                
+                <!-- 1. SCREEN: WELCOME / INSERT CARD -->
+                <div class="atm-screen active" id="screenWelcome">
+                  <div class="welcome-content">
+                    <div class="welcome-logo-pulse">
+                      <div class="welcome-pulse-ring"></div>
+                      <img src="assets/nexus-icon-dark.png" alt="NexusBank Logo" class="welcome-logo-badge">
+                    </div>
+                    <div class="welcome-brand-badge">
+                      <span class="w-nexus">NEXUS</span><span class="w-bank">BANK</span>
+                    </div>
+                    <h2>WELCOME TO NEXUS BANK</h2>
+                    <p class="welcome-subtitle">Please insert your ATM / Debit Card to begin your transaction.</p>
+                    
+                    <div class="card-prompt-box">
+                      <div class="prompt-animation">
+                        <i class="fa-solid fa-arrow-down-long"></i>
+                        <span class="prompt-card-chip"></span>
+                      </div>
+                      <span>Select a card from the wallet on the right and click <strong>"Insert Card into ATM"</strong> or use Quick Tap below:</span>
+                    </div>
+
+                    <div class="quick-insert-strip">
+                      <button id="quickInsertDefaultBtn" class="atm-quick-btn">
+                        <i class="fa-solid fa-arrow-right-to-bracket"></i> Insert Active Card (<span id="quickCardName">John Doe</span>)
+                      </button>
+                      <button id="quickFaceAuthBtn" class="atm-quick-btn bio-btn">
+                        <i class="fa-solid fa-face-viewfinder"></i> Face-ID Login (F2)
+                      </button>
+                      <button id="quickCardlessBtn" class="atm-quick-btn outline">
+                        <i class="fa-solid fa-qrcode"></i> Cardless QR (F3)
+                      </button>
+                    </div>
+
+                    <div class="security-notice">
+                      <i class="fa-solid fa-shield-halved"></i> 256-Bit Encrypted Hardware Session • EMV Chip Protected
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 1.5 SCREEN: BIOMETRIC FACIAL AUTHENTICATION -->
+                <div class="atm-screen" id="screenFaceAuth">
+                  <div class="face-auth-screen-layout">
+                    <div class="face-auth-header">
+                      <div class="face-auth-title">
+                        <i class="fa-solid fa-face-viewfinder"></i>
+                        <span>AI BIOMETRIC FACIAL SCANNER</span>
+                      </div>
+                      <span class="sensor-badge live" id="faceAuthSensorBadge"><i class="fa-solid fa-circle"></i> SENSOR LIVE</span>
+                    </div>
+
+                    <!-- Live Optical Viewport inside ATM Screen -->
+                    <div class="atm-camera-viewport" id="atmCameraViewport">
+                      <video id="atmFaceAuthVideo" autoplay playsinline muted></video>
+                      
+                      <!-- Simulated Face Mesh Graphic / Fallback Canvas -->
+                      <div class="face-scanning-hud" id="faceScanningHud">
+                        <div class="hud-reticle">
+                          <div class="hud-corner top-l"></div>
+                          <div class="hud-corner top-r"></div>
+                          <div class="hud-corner bot-l"></div>
+                          <div class="hud-corner bot-r"></div>
+                          <div class="hud-oval-guide">
+                            <div class="hud-scan-beam"></div>
+                          </div>
+                        </div>
+                        <div class="hud-landmark-mesh">
+                          <span class="mesh-point p1"></span>
+                          <span class="mesh-point p2"></span>
+                          <span class="mesh-point p3"></span>
+                          <span class="mesh-point p4"></span>
+                          <span class="mesh-point p5"></span>
+                        </div>
+                        <div class="hud-status-overlay" id="faceAuthStatusMsg">
+                          <i class="fa-solid fa-expand"></i> POSITION FACE WITHIN TARGET
+                        </div>
+                      </div>
+
+                      <!-- Biometric Match Found Overlay -->
+                      <div class="face-match-success-card" id="faceMatchSuccessCard" style="display: none;">
+                        <div class="match-icon-circle"><i class="fa-solid fa-circle-check"></i></div>
+                        <h4 id="matchCardholderName">JOHN DOE</h4>
+                        <span class="match-tier-label" id="matchTierLabel">OBSIDIAN PLATINUM</span>
+                        <div class="match-badge">99.8% CONFIDENCE MATCH</div>
+                      </div>
+                    </div>
+
+                    <div class="face-auth-progress-container">
+                      <div class="face-auth-progress-labels">
+                        <span id="faceAuthStepLabel">Initializing Optical Sensor...</span>
+                        <strong id="faceAuthPercentLabel">0%</strong>
+                      </div>
+                      <div class="face-auth-progress-bar">
+                        <div class="face-auth-progress-fill" id="faceAuthProgressFill"></div>
+                      </div>
+                    </div>
+
+                    <div class="face-auth-bottom-controls">
+                      <button class="screen-action-btn back" id="cancelFaceAuthBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Cancel / Return
+                      </button>
+                      <button class="screen-action-btn submit" id="manualTriggerFaceScanBtn">
+                        <i class="fa-solid fa-bolt"></i> Re-Scan Face
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2. SCREEN: PIN ENTRY -->
+                <div class="atm-screen" id="screenPin">
+                  <div class="screen-center-box">
+                    <div class="pin-header-icon">
+                      <i class="fa-solid fa-key"></i>
+                    </div>
+                    <h3>ENTER YOUR 4-DIGIT PIN</h3>
+                    <p class="pin-instructions">Please use the metallic keypad below or type on your keyboard.</p>
+                    
+                    <div class="pin-dots-container" id="pinDotsContainer">
+                      <span class="pin-dot"></span>
+                      <span class="pin-dot"></span>
+                      <span class="pin-dot"></span>
+                      <span class="pin-dot"></span>
+                    </div>
+
+                    <div class="pin-status-msg" id="pinStatusMsg">
+                      <span>Cardholder: <strong id="pinCardholderName">John Doe</strong></span>
+                    </div>
+
+                    <div class="pin-demo-hint" id="pinDemoHintBox" style="display: none;">
+                      <i class="fa-solid fa-circle-info"></i> Demo PIN (Sarah's Account): <strong id="demoPinHint">4321</strong>
+                    </div>
+
+                    <div class="screen-bottom-actions">
+                      <span class="screen-hint"><i class="fa-solid fa-keyboard"></i> Press ENTER on Keypad when done • CANCEL to abort</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 3. SCREEN: MAIN MENU -->
+                <div class="atm-screen" id="screenMainMenu">
+                  <div class="menu-screen-layout">
+                    <div class="menu-top-greeting">
+                      <span>Welcome, <strong id="menuUserName">John Doe</strong></span>
+                      <span class="account-type-badge" id="menuCardType">Platinum Debit • •••• 4242</span>
+                    </div>
+                    
+                    <div class="menu-options-grid">
+                      <!-- Left Menu Options (Aligned with F1-F4) -->
+                      <div class="menu-col menu-col-left">
+                        <div class="menu-item" data-action="balance">
+                          <span class="menu-arrow"><i class="fa-solid fa-arrow-left"></i></span>
+                          <div class="menu-text">
+                            <span class="title">Check Balance</span>
+                            <span class="desc">Inquiry & Mini-Statement</span>
+                          </div>
+                        </div>
+                        <div class="menu-item" data-action="fastcash">
+                          <span class="menu-arrow"><i class="fa-solid fa-arrow-left"></i></span>
+                          <div class="menu-text">
+                            <span class="title">Fast Cash</span>
+                            <span class="desc">Quick ₹500, ₹1000, ₹2000, ₹5000</span>
+                          </div>
+                        </div>
+                        <div class="menu-item" data-action="withdraw">
+                          <span class="menu-arrow"><i class="fa-solid fa-arrow-left"></i></span>
+                          <div class="menu-text">
+                            <span class="title">Withdraw Cash</span>
+                            <span class="desc">Custom Amount & Notes</span>
+                          </div>
+                        </div>
+                        <div class="menu-item" data-action="deposit">
+                          <span class="menu-arrow"><i class="fa-solid fa-arrow-left"></i></span>
+                          <div class="menu-text">
+                            <span class="title">Deposit Funds</span>
+                            <span class="desc">Cash & Cheque Drop</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Right Menu Options (Aligned with F5-F8) -->
+                      <div class="menu-col menu-col-right">
+                        <div class="menu-item" data-action="transfer">
+                          <div class="menu-text">
+                            <span class="title">Fund Transfer</span>
+                            <span class="desc">Pay Accounts & UPI</span>
+                          </div>
+                          <span class="menu-arrow"><i class="fa-solid fa-arrow-right"></i></span>
+                        </div>
+                        <div class="menu-item" data-action="statement">
+                          <div class="menu-text">
+                            <span class="title">Mini Statement</span>
+                            <span class="desc">Recent Activity & Print</span>
+                          </div>
+                          <span class="menu-arrow"><i class="fa-solid fa-arrow-right"></i></span>
+                        </div>
+                        <div class="menu-item" data-action="pinchange">
+                          <div class="menu-text">
+                            <span class="title">Change PIN</span>
+                            <span class="desc">Update 4-Digit Passcode</span>
+                          </div>
+                          <span class="menu-arrow"><i class="fa-solid fa-arrow-right"></i></span>
+                        </div>
+                        <div class="menu-item danger" data-action="exit">
+                          <div class="menu-text">
+                            <span class="title">Exit / Return Card</span>
+                            <span class="desc">End Session Securely</span>
+                          </div>
+                          <span class="menu-arrow"><i class="fa-solid fa-arrow-right"></i></span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="menu-bottom-bar">
+                      <span>Select option via Touch Screen or Side Function Keys (F1-F8)</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 4. SCREEN: BALANCE INQUIRY -->
+                <div class="atm-screen" id="screenBalance">
+                  <div class="balance-screen-layout">
+                    <h3><i class="fa-solid fa-scale-balanced"></i> ACCOUNT BALANCE INQUIRY</h3>
+                    <p class="screen-sub">Live ledger and available funds summary</p>
+                    
+                    <div class="balance-cards-grid">
+                      <!-- Checking Account -->
+                      <div class="screen-balance-card active">
+                        <div class="card-acc-header">
+                          <span class="acc-name"><i class="fa-solid fa-money-check-dollar"></i> Checking Account</span>
+                          <span class="acc-num">•••• 7819</span>
+                        </div>
+                        <div class="acc-amounts">
+                          <div class="amount-row">
+                            <span class="label">Available Balance:</span>
+                            <span class="value" id="screenCheckingAvail">₹48,500.00</span>
+                          </div>
+                          <div class="amount-row muted">
+                            <span class="label">Ledger Balance:</span>
+                            <span class="value" id="screenCheckingLedger">₹48,500.00</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Savings Account -->
+                      <div class="screen-balance-card">
+                        <div class="card-acc-header">
+                          <span class="acc-name"><i class="fa-solid fa-piggy-bank"></i> High-Yield Savings</span>
+                          <span class="acc-num">•••• 9204</span>
+                        </div>
+                        <div class="acc-amounts">
+                          <div class="amount-row">
+                            <span class="label">Available Balance:</span>
+                            <span class="value" id="screenSavingsAvail">₹1,24,200.50</span>
+                          </div>
+                          <div class="amount-row muted">
+                            <span class="label">APY Interest:</span>
+                            <span class="value text-success">+4.85% APY</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="balance-actions-grid">
+                      <button class="screen-action-btn" id="printBalanceReceiptBtn">
+                        <i class="fa-solid fa-receipt"></i> Print Thermal Receipt (F3)
+                      </button>
+                      <button class="screen-action-btn" id="balanceWithdrawBtn">
+                        <i class="fa-solid fa-money-bill-transfer"></i> Withdraw From This Account (F7)
+                      </button>
+                      <button class="screen-action-btn back" id="balanceBackBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Back to Main Menu (F8)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 5. SCREEN: FAST CASH -->
+                <div class="atm-screen" id="screenFastCash">
+                  <div class="fastcash-screen-layout">
+                    <h3><i class="fa-solid fa-bolt"></i> FAST CASH WITHDRAWAL</h3>
+                    <p class="screen-sub">Select a preset amount for instantaneous cash dispensing</p>
+                    
+                    <div class="fastcash-grid">
+                      <button class="fastcash-btn" data-amount="500">
+                        <span class="fc-side">F1</span>
+                        <span class="fc-amt" data-base="500">₹500</span>
+                      </button>
+                      <button class="fastcash-btn" data-amount="1000">
+                        <span class="fc-side">F5</span>
+                        <span class="fc-amt" data-base="1000">₹1,000</span>
+                      </button>
+                      
+                      <button class="fastcash-btn" data-amount="2000">
+                        <span class="fc-side">F2</span>
+                        <span class="fc-amt" data-base="2000">₹2,000</span>
+                      </button>
+                      <button class="fastcash-btn" data-amount="5000">
+                        <span class="fc-side">F6</span>
+                        <span class="fc-amt" data-base="5000">₹5,000</span>
+                      </button>
+                      
+                      <button class="fastcash-btn" data-amount="10000">
+                        <span class="fc-side">F3</span>
+                        <span class="fc-amt" data-base="10000">₹10,000</span>
+                      </button>
+                      <button class="fastcash-btn" data-amount="20000">
+                        <span class="fc-side">F7</span>
+                        <span class="fc-amt" data-base="20000">₹20,000</span>
+                      </button>
+                    </div>
+
+                    <div class="screen-footer-strip">
+                      <button class="screen-action-btn back" id="fastCashBackBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Back to Menu (F8)
+                      </button>
+                      <button class="screen-action-btn" id="fastCashCustomBtn">
+                        <i class="fa-solid fa-sliders"></i> Enter Custom Amount (F4)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 6. SCREEN: CUSTOM WITHDRAWAL -->
+                <div class="atm-screen" id="screenWithdraw">
+                  <div class="withdraw-screen-layout">
+                    <h3><i class="fa-solid fa-money-bill-wave"></i> CASH WITHDRAWAL</h3>
+                    <p class="screen-sub">Enter desired amount in multiples of ₹100 / ₹200 / ₹500</p>
+                    
+                    <div class="withdraw-account-selector">
+                      <label>Select Source Account:</label>
+                      <div class="acc-pill-group">
+                        <button class="acc-pill active" data-account="checking">Checking (₹<span id="withdrawCheckBal">48,500.00</span>)</button>
+                        <button class="acc-pill" data-account="savings">Savings (₹<span id="withdrawSaveBal">1,24,200.50</span>)</button>
+                      </div>
+                    </div>
+
+                    <div class="amount-display-box">
+                      <span class="currency-symbol" id="withdrawCurrencySymbol">₹</span>
+                      <input type="text" id="withdrawAmountInput" class="screen-amt-input" placeholder="0" readonly>
+                    </div>
+
+                    <div class="quick-add-chips">
+                      <button class="chip-add" data-add="100">+₹100</button>
+                      <button class="chip-add" data-add="500">+₹500</button>
+                      <button class="chip-add" data-add="1000">+₹1,000</button>
+                      <button class="chip-add" data-add="2000">+₹2,000</button>
+                      <button class="chip-add" data-add="5000">+₹5,000</button>
+                      <button class="chip-clear" id="withdrawClearBtn"><i class="fa-solid fa-rotate-left"></i> Clear</button>
+                    </div>
+
+                    <div class="denom-preferences">
+                      <span class="label">Denomination Preference:</span>
+                      <div class="denom-options">
+                        <label><input type="radio" name="denomPref" value="mixed" checked> Mixed Notes (₹100, ₹200, ₹500)</label>
+                        <label><input type="radio" name="denomPref" value="large"> Large Notes (₹500s only)</label>
+                        <label><input type="radio" name="denomPref" value="small"> Small Notes (₹100s only)</label>
+                      </div>
+                    </div>
+
+                    <div class="limit-status-line">
+                      <span>Daily Limit Remaining: <strong id="dailyLimitRemaining">₹25,000.00</strong></span>
+                      <span id="withdrawErrorMsg" class="text-danger"></span>
+                    </div>
+
+                    <div class="screen-actions-row">
+                      <button class="screen-action-btn back" id="withdrawBackBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Cancel / Back (F4)
+                      </button>
+                      <button class="screen-action-btn primary" id="withdrawConfirmBtn">
+                        <i class="fa-solid fa-check"></i> Dispense Cash (F8)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 7. SCREEN: CASH & CHEQUE DEPOSIT -->
+                <div class="atm-screen" id="screenDeposit">
+                  <div class="deposit-screen-layout">
+                    <h3><i class="fa-solid fa-hand-holding-dollar"></i> DEPOSIT FUNDS</h3>
+                    <p class="screen-sub">Insert cash notes or hypothetical cheques for instant credit</p>
+
+                    <div class="deposit-type-tabs">
+                      <button class="deposit-tab-btn active" data-deptype="cash"><i class="fa-solid fa-money-bill-1"></i> Cash Deposit</button>
+                      <button class="deposit-tab-btn" data-deptype="cheque"><i class="fa-solid fa-money-check"></i> Cheque Deposit</button>
+                    </div>
+
+                    <!-- Cash Deposit Tab Content -->
+                    <div class="deposit-tab-pane active" id="depositCashPane">
+                      <div class="bill-counter-grid">
+                        <div class="bill-counter-item">
+                          <span class="bill-face">₹500</span>
+                          <div class="counter-ctrls">
+                            <button class="counter-btn minus" data-denom="500">-</button>
+                            <span class="bill-count" id="count500">0</span>
+                            <button class="counter-btn plus" data-denom="500">+</button>
+                          </div>
+                          <span class="bill-subtotal" id="sub500">₹0</span>
+                        </div>
+
+                        <div class="bill-counter-item">
+                          <span class="bill-face">₹200</span>
+                          <div class="counter-ctrls">
+                            <button class="counter-btn minus" data-denom="200">-</button>
+                            <span class="bill-count" id="count200">0</span>
+                            <button class="counter-btn plus" data-denom="200">+</button>
+                          </div>
+                          <span class="bill-subtotal" id="sub200">₹0</span>
+                        </div>
+
+                        <div class="bill-counter-item">
+                          <span class="bill-face">₹100</span>
+                          <div class="counter-ctrls">
+                            <button class="counter-btn minus" data-denom="100">-</button>
+                            <span class="bill-count" id="count100">0</span>
+                            <button class="counter-btn plus" data-denom="100">+</button>
+                          </div>
+                          <span class="bill-subtotal" id="sub100">₹0</span>
+                        </div>
+
+                        <div class="bill-counter-item">
+                          <span class="bill-face">₹50</span>
+                          <div class="counter-ctrls">
+                            <button class="counter-btn minus" data-denom="50">-</button>
+                            <span class="bill-count" id="count50">0</span>
+                            <button class="counter-btn plus" data-denom="50">+</button>
+                          </div>
+                          <span class="bill-subtotal" id="sub50">₹0</span>
+                        </div>
+                      </div>
+
+                      <div class="deposit-total-strip">
+                        <span>Total Cash Calculated:</span>
+                        <strong id="depositTotalAmount">₹0.00</strong>
+                      </div>
+                    </div>
+
+                    <!-- Cheque Deposit Tab Content -->
+                    <div class="deposit-tab-pane" id="depositChequePane">
+                      <div class="cheque-scanner-wrapper">
+                        <!-- Optical Scanner Simulation Visual -->
+                        <div class="cheque-scanner-preview" id="chequeScannerPreview">
+                          <div class="cheque-laser-beam" id="chequeLaserBeam"></div>
+                          <div class="sample-cheque-card" id="sampleChequeCard">
+                            <div class="cheque-top-row">
+                              <span class="c-bank-logo"><i class="fa-solid fa-building-columns"></i> HDFC BANK LTD</span>
+                              <span class="c-date-stamp">DATE: 02-10-2026</span>
+                            </div>
+                            <div class="cheque-payee-row">
+                              <span class="c-label">PAY:</span>
+                              <span class="c-val" id="chequePreviewPayee">NEXUS USER</span>
+                              <span class="c-or-bearer">OR BEARER</span>
+                            </div>
+                            <div class="cheque-amount-row">
+                              <span class="c-words">RUPEES: FIFTEEN THOUSAND ONLY</span>
+                              <span class="c-box" id="chequePreviewAmount">₹15,000.00</span>
+                            </div>
+                            <div class="cheque-micr-band">
+                              <span class="micr-font">⑆408219⑆ 110002014⑆ 000234⑈ 10</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="cheque-ocr-actions">
+                          <button type="button" class="btn-scan-cheque" id="simulateChequeOcrBtn">
+                            <i class="fa-solid fa-barcode"></i> Scan Physical Cheque via Optical OCR / MICR
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="cheque-form">
+                        <div class="form-row">
+                          <label>Cheque Number (6 digits):</label>
+                          <input type="text" id="chequeNumberInput" placeholder="e.g. 408219" maxlength="6" class="screen-text-input">
+                        </div>
+                        <div class="form-row">
+                          <label>Issuing Bank:</label>
+                          <input type="text" id="chequeBankInput" placeholder="e.g. State Bank of India / HDFC Bank" class="screen-text-input">
+                        </div>
+                        <div class="form-row">
+                          <label>Cheque Amount (₹):</label>
+                          <input type="number" id="chequeAmountInput" placeholder="0.00" min="1" step="1" class="screen-text-input">
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="deposit-account-select">
+                      <span>Deposit into:</span>
+                      <select id="depositTargetAccount" class="screen-dropdown">
+                        <option value="checking">Checking Account (•••• 7819)</option>
+                        <option value="savings">High-Yield Savings (•••• 9204)</option>
+                      </select>
+                    </div>
+
+                    <div class="screen-actions-row">
+                      <button class="screen-action-btn back" id="depositBackBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Cancel / Back (F4)
+                      </button>
+                      <button class="screen-action-btn primary" id="depositConfirmBtn">
+                        <i class="fa-solid fa-arrow-down-to-bracket"></i> Complete Deposit (F8)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 8. SCREEN: FUND TRANSFER -->
+                <div class="atm-screen" id="screenTransfer">
+                  <div class="transfer-screen-layout">
+                    <h3><i class="fa-solid fa-paper-plane"></i> FUND TRANSFER / FAST PAY</h3>
+                    <p class="screen-sub">Send funds to another account number or UPI ID</p>
+
+                    <div class="transfer-form-grid">
+                      <div class="form-field">
+                        <label>Beneficiary / Recipient:</label>
+                        <div class="quick-beneficiaries">
+                          <button class="ben-chip active" data-name="Sarah Connor" data-acc="992100412">Sarah Connor (Sister)</button>
+                          <button class="ben-chip" data-name="Alex Vance" data-acc="441098231">Alex Vance (Rent)</button>
+                          <button class="ben-chip" data-name="Custom" data-acc="">+ Custom</button>
+                        </div>
+                      </div>
+
+                      <div class="form-field">
+                        <label>Recipient Account / UPI ID:</label>
+                        <input type="text" id="transferTargetInput" class="screen-text-input" value="992100412@upi" placeholder="Enter Account / UPI ID">
+                      </div>
+
+                      <div class="form-field-row">
+                        <div class="field-col">
+                          <label>Transfer Amount (₹):</label>
+                          <input type="number" id="transferAmountInput" class="screen-text-input" placeholder="0.00" min="1" step="1">
+                        </div>
+                        <div class="field-col">
+                          <label>From Account:</label>
+                          <select id="transferSourceAccount" class="screen-dropdown">
+                            <option value="checking">Checking (₹48,500.00)</option>
+                            <option value="savings">Savings (₹1,24,200.50)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div class="form-field">
+                        <label>Transfer Note / Memo:</label>
+                        <input type="text" id="transferNoteInput" class="screen-text-input" placeholder="e.g. Monthly rent, utilities, dinner">
+                      </div>
+                    </div>
+
+                    <div class="screen-actions-row">
+                      <button class="screen-action-btn back" id="transferBackBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Cancel / Back (F4)
+                      </button>
+                      <button class="screen-action-btn primary" id="transferConfirmBtn">
+                        <i class="fa-solid fa-paper-plane"></i> Send Transfer (F8)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 9. SCREEN: PIN CHANGE -->
+                <div class="atm-screen" id="screenPinChange">
+                  <div class="pinchange-screen-layout">
+                    <h3><i class="fa-solid fa-shield-keyhole"></i> CHANGE ATM CARD PIN</h3>
+                    <p class="screen-sub">Set a new secure 4-digit PIN for this card</p>
+
+                    <div class="pinchange-box">
+                      <div class="pin-field-group">
+                        <label>Current 4-Digit PIN:</label>
+                        <input type="password" id="currentPinInput" maxlength="4" placeholder="••••" class="screen-pin-box">
+                      </div>
+
+                      <div class="pin-field-group">
+                        <label>New 4-Digit PIN:</label>
+                        <input type="password" id="newPinInput" maxlength="4" placeholder="••••" class="screen-pin-box">
+                      </div>
+
+                      <div class="pin-field-group">
+                        <label>Confirm New PIN:</label>
+                        <input type="password" id="confirmNewPinInput" maxlength="4" placeholder="••••" class="screen-pin-box">
+                      </div>
+                    </div>
+
+                    <div class="pin-guidelines">
+                      <span><i class="fa-solid fa-shield-check"></i> Avoid repetitive numbers (1111) or sequential numbers (1234).</span>
+                    </div>
+
+                    <div class="screen-actions-row">
+                      <button class="screen-action-btn back" id="pinChangeBackBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Cancel / Back (F4)
+                      </button>
+                      <button class="screen-action-btn primary" id="pinChangeConfirmBtn">
+                        <i class="fa-solid fa-check-double"></i> Save New PIN (F8)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 10. SCREEN: MINI STATEMENT -->
+                <div class="atm-screen" id="screenStatement">
+                  <div class="statement-screen-layout">
+                    <div class="statement-header">
+                      <h3><i class="fa-solid fa-clock-rotate-left"></i> MINI STATEMENT</h3>
+                      <span class="statement-card-badge" id="statementCardBadge">Card •••• 4242</span>
+                    </div>
+                    
+                    <div class="screen-statement-table-wrapper">
+                      <table class="screen-statement-table">
+                        <thead>
+                          <tr>
+                            <th>DATE</th>
+                            <th>DESCRIPTION</th>
+                            <th>TYPE</th>
+                            <th class="text-right">AMOUNT</th>
+                          </tr>
+                        </thead>
+                        <tbody id="screenStatementBody">
+                          <!-- Filled dynamically by JS -->
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div class="statement-footer-actions">
+                      <button class="screen-action-btn" id="statementPrintBtn">
+                        <i class="fa-solid fa-receipt"></i> Print Mini-Statement (F3)
+                      </button>
+                      <button class="screen-action-btn back" id="statementBackBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Back to Main Menu (F8)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 11. SCREEN: DISPENSING CASH ANIMATION -->
+                <div class="atm-screen" id="screenDispensing">
+                  <div class="dispensing-screen-layout">
+                    <div class="dispensing-gears">
+                      <i class="fa-solid fa-gear fa-spin gear-1"></i>
+                      <i class="fa-solid fa-gear fa-spin fa-spin-reverse gear-2"></i>
+                      <i class="fa-solid fa-money-bill-wave dispensing-icon"></i>
+                    </div>
+                    <h3>COUNTING & DISPENSING CASH...</h3>
+                    <p class="screen-sub">Please listen for the dispenser motor and watch the cash slot below.</p>
+                    
+                    <div class="dispensing-progress-bar">
+                      <div class="dispensing-progress-fill" id="dispensingProgressFill"></div>
+                    </div>
+
+                    <div class="dispensing-details-card">
+                      <div class="disp-row">
+                        <span>Dispensing Amount:</span>
+                        <strong id="dispensedAmountText">₹500.00</strong>
+                      </div>
+                      <div class="disp-row">
+                        <span>Notes Breakdown:</span>
+                        <span id="dispensedNotesText">1x ₹500 Note</span>
+                      </div>
+                    </div>
+
+                    <div class="dispense-instruction">
+                      <i class="fa-solid fa-arrow-down"></i> Cash is emerging from the dispenser slot below!
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 12. SCREEN: TRANSACTION SUCCESS / RECEIPT QUERY -->
+                <div class="atm-screen" id="screenSuccess">
+                  <div class="success-screen-layout">
+                    <div class="success-circle-icon">
+                      <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <h3 id="successMainTitle">TRANSACTION SUCCESSFUL</h3>
+                    <p class="screen-sub" id="successSubtitle">Your cash has been dispensed and account updated.</p>
+
+                    <div class="success-receipt-summary">
+                      <div class="sum-row">
+                        <span>Transaction Ref:</span>
+                        <code id="successRefCode">NX-9948201</code>
+                      </div>
+                      <div class="sum-row">
+                        <span>New Available Balance:</span>
+                        <strong id="successNewBalance">₹48,000.00</strong>
+                      </div>
+                      <div class="sum-row">
+                        <span>Date / Time:</span>
+                        <span id="successTimestamp">2026-09-01 12:00:00</span>
+                      </div>
+                    </div>
+
+                    <div class="success-actions-grid">
+                      <button class="screen-action-btn" id="successPrintReceiptBtn">
+                        <i class="fa-solid fa-receipt"></i> Print Receipt (F3)
+                      </button>
+                      <button class="screen-action-btn" id="successAnotherTxBtn">
+                        <i class="fa-solid fa-rotate"></i> Another Transaction (F4)
+                      </button>
+                      <button class="screen-action-btn danger" id="successEjectBtn">
+                        <i class="fa-solid fa-arrow-right-from-bracket"></i> Complete & Eject Card (F8)
+                      </button>
+                    </div>
+
+                    <div class="timeout-countdown">
+                      Auto-eject in <span id="successCountdownSec">30</span>s
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 13. SCREEN: CARD EJECTED / THANK YOU -->
+                <div class="atm-screen" id="screenCardEjected">
+                  <div class="ejected-screen-layout">
+                    <div class="ejected-card-icon">
+                      <i class="fa-solid fa-hand-holding"></i>
+                    </div>
+                    <h3>PLEASE TAKE YOUR CARD</h3>
+                    <p class="screen-sub">Thank you for banking with Nexus Express.</p>
+
+                    <div class="take-reminders">
+                      <div class="rem-item"><i class="fa-solid fa-credit-card"></i> ATM Card</div>
+                      <div class="rem-item"><i class="fa-solid fa-money-bill-wave"></i> Cash Currency</div>
+                      <div class="rem-item"><i class="fa-solid fa-receipt"></i> Printed Receipt</div>
+                    </div>
+
+                    <div class="security-closing-tip">
+                      <i class="fa-solid fa-shield"></i> Remember to keep your PIN confidential at all times.
+                    </div>
+
+                    <button class="screen-action-btn primary" id="ejectedDoneBtn">
+                      <i class="fa-solid fa-house"></i> Return to Welcome Screen
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 14. SCREEN: CARDLESS QR / OTP CASH & CBDC (DIGITAL RUPEE) -->
+                <div class="atm-screen" id="screenCardless">
+                  <div class="cardless-screen-layout">
+                    <div class="cardless-header">
+                      <h3><i class="fa-solid fa-qrcode"></i> CARDLESS CASH & DIGITAL RUPEE (e₹)</h3>
+                      <span class="cbdc-live-badge"><i class="fa-solid fa-bolt"></i> UPI 2.0 • CBDC e₹ ENABLED</span>
+                    </div>
+                    <p class="screen-sub">Scan the dynamic QR code with any UPI App or Nexus e-Rupee Wallet to dispense cash instantly</p>
+
+                    <!-- Fast QR Amount Selection Chips -->
+                    <div class="qr-amount-preset-strip">
+                      <span class="qr-amt-label">Select Amount:</span>
+                      <div class="qr-amt-chips">
+                        <button class="qr-chip active" data-qramt="500">₹500</button>
+                        <button class="qr-chip" data-qramt="1000">₹1,000</button>
+                        <button class="qr-chip" data-qramt="2000">₹2,000</button>
+                        <button class="qr-chip" data-qramt="5000">₹5,000</button>
+                      </div>
+                    </div>
+
+                    <div class="qr-container-box">
+                      <div class="qr-code-graphic dynamic-qr" id="qrCodeGraphic">
+                        <div class="qr-scanner-line"></div>
+                        <!-- Stylized SVG / Icon Dynamic QR Pattern -->
+                        <div class="qr-matrix-box">
+                          <i class="fa-solid fa-qrcode qr-large-icon"></i>
+                          <div class="qr-center-token" id="qrCenterToken">e₹500</div>
+                        </div>
+                        <div class="qr-countdown-tag">
+                          <i class="fa-regular fa-clock"></i> Expires in <strong id="qrExpireSec">59</strong>s
+                        </div>
+                      </div>
+
+                      <div class="qr-info-text">
+                        <div class="qr-details-badge">
+                          <span>Dispense Amount: <strong id="qrDispenseAmountDisplay">₹500.00</strong></span>
+                          <small>Dynamic Payload: <code id="qrPayloadRef">upi://pay?pa=nexus.atm@rbi&am=500</code></small>
+                        </div>
+                        
+                        <!-- UPI & CBDC App Simulators -->
+                        <div class="app-sim-grid">
+                          <button class="app-sim-btn cbdc" id="simCbdcPayBtn" title="Pay with RBI Central Bank Digital Currency">
+                            <i class="fa-solid fa-indian-rupee-sign"></i> Nexus e-Rupee (CBDC)
+                          </button>
+                          <button class="app-sim-btn gpay" id="simGpayBtn" title="Pay with Google Pay UPI">
+                            <i class="fa-brands fa-google-pay"></i> Google Pay
+                          </button>
+                          <button class="app-sim-btn phonepe" id="simPhonePeBtn" title="Pay with PhonePe UPI">
+                            <i class="fa-solid fa-wallet"></i> PhonePe
+                          </button>
+                          <button class="app-sim-btn paytm" id="simPaytmBtn" title="Pay with Paytm / BHIM UPI">
+                            <i class="fa-solid fa-building-columns"></i> BHIM / Paytm
+                          </button>
+                          <button class="app-sim-btn" id="simulateAppScanBtn" title="Instant Scan & Authorize" style="grid-column: span 2; background: linear-gradient(135deg, #00f076, #00e5ff); color: #020617; font-weight: 700;">
+                            <i class="fa-solid fa-camera"></i> Instant Scan & Authorize
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="otp-divider-strip"><span>— OR ENTER 6-DIGIT ONE-TIME PASSCODE (OTP) —</span></div>
+
+                    <div class="cardless-otp-input-row">
+                      <input type="text" id="cardlessOtpInput" maxlength="6" placeholder="884019" class="screen-otp-box" value="884019">
+                      <button class="screen-action-btn primary" id="cardlessOtpSubmitBtn">
+                        <i class="fa-solid fa-check"></i> Authorize OTP (F8)
+                      </button>
+                    </div>
+
+                    <div class="screen-actions-row">
+                      <button class="screen-action-btn back" id="cardlessBackBtn">
+                        <i class="fa-solid fa-arrow-left"></i> Cancel / Back (F4)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Right Side Physical Buttons (F5 - F8) -->
+            <div class="side-keys side-keys-right">
+              <button class="side-key" id="btnF5" data-key="F5" title="Side Key F5">
+                <span class="key-indicator"></span>
+                <span class="key-label">F5</span>
+              </button>
+              <button class="side-key" id="btnF6" data-key="F6" title="Side Key F6">
+                <span class="key-indicator"></span>
+                <span class="key-label">F6</span>
+              </button>
+              <button class="side-key" id="btnF7" data-key="F7" title="Side Key F7">
+                <span class="key-indicator"></span>
+                <span class="key-label">F7</span>
+              </button>
+              <button class="side-key" id="btnF8" data-key="F8" title="Side Key F8">
+                <span class="key-indicator"></span>
+                <span class="key-label">F8</span>
+              </button>
+            </div>
+
+          </div>
+
+          <!-- ATM Hardware Lower Deck: Slots, Keypad & Dispensers -->
+          <div class="atm-lower-deck">
+            
+            <!-- Left Deck: Receipt Slot & Deposit Slot -->
+            <div class="deck-left-column">
+              
+              <!-- Thermal Receipt Printer Slot -->
+              <div class="hardware-module receipt-module">
+                <div class="module-label"><i class="fa-solid fa-receipt"></i> RECEIPT PRINTER</div>
+                <div class="slot-container receipt-slot-container">
+                  <div class="slot-bezel receipt-bezel">
+                    <div class="slot-opening" id="receiptSlotOpening"></div>
+                  </div>
+                  <!-- The Animated Paper Receipt Rolling Out -->
+                  <div class="ejected-receipt-paper" id="ejectedReceiptPaper">
+                    <div class="paper-header">
+                      <div class="p-logo-wrap">
+                        <img src="assets/nexus-icon-dark.png" alt="NexusBank" class="receipt-icon-mono">
+                        <span class="p-logo">NEXUS BANK</span>
+                      </div>
+                      <span class="p-type" id="paperReceiptType">WITHDRAWAL</span>
+                    </div>
+                    <div class="paper-body" id="paperReceiptSnippet">
+                      Amount: ₹500.00<br>
+                      Bal: ₹48,000.00
+                    </div>
+                    <button class="tear-receipt-btn" id="tearReceiptBtn" title="Click to view/tear receipt">
+                      <i class="fa-solid fa-scissors"></i> TEAR RECEIPT
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Deposit Drop Slot -->
+              <div class="hardware-module deposit-module">
+                <div class="module-label"><i class="fa-solid fa-inbox"></i> DEPOSIT ENVELOPE / CHEQUE</div>
+                <div class="slot-container deposit-slot-container">
+                  <div class="slot-bezel deposit-bezel">
+                    <div class="slot-opening deposit-opening" id="depositSlotOpening">
+                      <span class="slot-shutter"></span>
+                    </div>
+                  </div>
+                  <div class="deposit-indicator-led" id="depositLed"></div>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Center Deck: Metallic Tactile PIN Pad -->
+            <div class="deck-center-column">
+              <div class="hardware-module pinpad-module">
+                <div class="pinpad-bezel">
+                  <div class="pinpad-privacy-shield">
+                    <div class="privacy-label"><i class="fa-solid fa-eye-slash"></i> SHIELD PIN WITH HAND</div>
+                  </div>
+
+                  <div class="metallic-keypad" id="metallicKeypad">
+                    <!-- Keypad Row 1 -->
+                    <button class="key-btn" data-key="1"><span>1</span></button>
+                    <button class="key-btn" data-key="2"><span>2</span><small>ABC</small></button>
+                    <button class="key-btn" data-key="3"><span>3</span><small>DEF</small></button>
+                    <button class="key-btn fn-btn cancel-btn" data-key="CANCEL">
+                      <i class="fa-solid fa-xmark"></i> CANCEL
+                    </button>
+
+                    <!-- Keypad Row 2 -->
+                    <button class="key-btn" data-key="4"><span>4</span><small>GHI</small></button>
+                    <button class="key-btn" data-key="5"><span>5</span><small>JKL</small></button>
+                    <button class="key-btn" data-key="6"><span>6</span><small>MNO</small></button>
+                    <button class="key-btn fn-btn clear-btn" data-key="CLEAR">
+                      <i class="fa-solid fa-delete-left"></i> CLEAR
+                    </button>
+
+                    <!-- Keypad Row 3 -->
+                    <button class="key-btn" data-key="7"><span>7</span><small>PQRS</small></button>
+                    <button class="key-btn" data-key="8"><span>8</span><small>TUV</small></button>
+                    <button class="key-btn" data-key="9"><span>9</span><small>WXYZ</small></button>
+                    <button class="key-btn fn-btn enter-btn" data-key="ENTER">
+                      <i class="fa-solid fa-check"></i> ENTER
+                    </button>
+
+                    <!-- Keypad Row 4 -->
+                    <button class="key-btn blank-key" disabled><span>•</span></button>
+                    <button class="key-btn" data-key="0"><span>0</span></button>
+                    <button class="key-btn" data-key="00"><span>00</span></button>
+                    <button class="key-btn fn-btn help-btn" id="keypadHelpBtn" data-key="HELP">
+                      <i class="fa-solid fa-question"></i> HELP
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Deck: Motorized Card Reader Slot & Cash Dispenser -->
+            <div class="deck-right-column">
+              
+              <!-- Motorized Card Reader Module -->
+              <div class="hardware-module card-module">
+                <div class="module-label"><i class="fa-solid fa-credit-card"></i> CARD READER (INSERT CHIP)</div>
+                <div class="slot-container card-slot-container">
+                  <div class="slot-bezel card-bezel">
+                    <div class="card-slot-light" id="cardSlotLight"></div>
+                    <div class="slot-opening card-opening" id="cardSlotOpening">
+                      <!-- Visual Card Insert Animation Graphic -->
+                      <div class="physical-card-in-slot" id="cardInSlotGraphic">
+                        <div class="mini-card-chip"></div>
+                        <span class="mini-card-brand">
+                          <img src="assets/nexus-icon-dark.png" alt="NexusBank" class="mini-card-logo">
+                          <span>NEXUS</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-status-indicator" id="cardStatusIndicator">
+                  <span class="card-led" id="cardLed"></span>
+                  <span id="cardStatusText">NO CARD INSERTED</span>
+                </div>
+              </div>
+
+              <!-- Motorized Cash Dispenser Module -->
+              <div class="hardware-module cash-module">
+                <div class="module-label"><i class="fa-solid fa-money-bills"></i> CASH DISPENSER</div>
+                <div class="slot-container cash-slot-container">
+                  <div class="slot-bezel cash-bezel">
+                    <div class="cash-shutter" id="cashShutter"></div>
+                    <div class="slot-opening cash-opening">
+                      
+                      <!-- Animated Cash Stack Emerging -->
+                      <div class="dispensed-cash-stack" id="dispensedCashStack">
+                        <div class="cash-note note-1">₹500</div>
+                        <div class="cash-note note-2">₹500</div>
+                        <div class="cash-note note-3">₹200</div>
+                        <button class="collect-cash-btn" id="collectCashBtn">
+                          <i class="fa-solid fa-hand-holding-dollar"></i> COLLECT CASH
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- Bottom Audio, New Account Registration & Braille Module -->
+          <div class="atm-chassis-footer">
+            <!-- Left Corner: Open New Account Registration Portal -->
+            <button class="open-account-corner-btn" id="openAccountCornerBtn" title="Register New User & Open Bank Account">
+              <span class="btn-glow-ring"></span>
+              <i class="fa-solid fa-user-plus btn-corner-icon"></i>
+              <div class="btn-corner-labels">
+                <span class="btn-corner-main">OPEN NEW ACCOUNT</span>
+                <span class="btn-corner-sub">Register & Get Auto-Assigned Card</span>
+              </div>
+              <span class="badge-corner-pulse">REGISTER</span>
+            </button>
+
+            <div class="headphone-jack">
+              <span class="audio-jack-hole"></span>
+              <span class="audio-jack-label"><i class="fa-solid fa-headphones"></i> Audio Assist (3.5mm)</span>
+            </div>
+            <div class="braille-dots" title="Braille Accessibility Legend">
+              ⠝⠑⠭⠥⠎ ⠃⠁⠝⠅ ⠁⠞⠍
+            </div>
+            <div class="terminal-cert">
+              EMV Level 2 Certified • PCI-PTS 5.x
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+
+      <!-- ======================================================== -->
+      <!-- RIGHT SECTION: DIGITAL COMPANION & VIRTUAL CARD STUDIO  -->
+      <!-- ======================================================== -->
+      <section class="digital-companion-section" id="dashboardSection">
+        
+        <!-- Live Wallet & Active Card 3D Viewer -->
+        <div class="companion-card-box">
+          
+          <div class="box-header">
+            <div class="box-title">
+              <i class="fa-solid fa-id-card-clip"></i>
+              <h3>Active ATM Card</h3>
+            </div>
+            <button class="btn-create-card" id="openActivateCardModalBtn">
+              <i class="fa-solid fa-plus"></i> Activate New Card
+            </button>
+          </div>
+
+          <!-- 3D Interactive Realistic Debit Card -->
+          <div class="card-3d-wrapper" id="card3dWrapper" title="Click or hover to flip card">
+            <div class="card-3d" id="card3d">
+              
+              <!-- Front Face of Card -->
+              <div class="card-face card-front" id="cardFrontFace">
+                <div class="card-glow-reflection"></div>
+                
+                <div class="card-top-row">
+                  <span class="card-bank-name">
+                    <img src="assets/nexus-icon-dark.png" alt="NexusBank" class="card-bank-logo-mini">
+                    <span>NEXUS BANK</span>
+                  </span>
+                  <span class="card-tier-badge" id="cardTierBadge">OBSIDIAN PLATINUM</span>
+                </div>
+
+                <div class="card-middle-row">
+                  <div class="emv-chip">
+                    <div class="chip-line"></div>
+                    <div class="chip-line"></div>
+                    <div class="chip-line"></div>
+                  </div>
+                  <div class="contactless-icon">
+                    <i class="fa-solid fa-wifi"></i>
+                  </div>
+                  <div class="card-bio-photo-thumb" id="cardBioPhoto" title="Biometric KYC Verified Identity">
+                    <img id="cardBioImg" src="" alt="Biometric Face" style="display: none;">
+                    <div class="bio-placeholder-icon" id="cardBioPlaceholder"><i class="fa-solid fa-user-shield"></i></div>
+                    <span class="bio-verified-dot" title="Biometric ID Verified"></span>
+                  </div>
+                </div>
+
+                <div class="card-number-row" id="cardDisplayNumber">
+                  4242 •••• •••• 8840
+                </div>
+
+                <div class="card-bottom-row">
+                  <div class="card-holder">
+                    <span class="meta-label">CARDHOLDER</span>
+                    <strong id="cardDisplayHolder">JOHN DOE</strong>
+                  </div>
+                  <div class="card-expiry">
+                    <span class="meta-label">EXPIRES</span>
+                    <strong id="cardDisplayExpiry">09/29</strong>
+                  </div>
+                  <div class="card-brand-logo" id="cardBrandLogo">
+                    <i class="fa-brands fa-cc-visa"></i>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Back Face of Card -->
+              <div class="card-face card-back">
+                <div class="mag-stripe"></div>
+                <div class="card-cvv-strip">
+                  <span class="sig-line">Authorized Signature</span>
+                  <div class="cvv-box" id="cardDisplayCvv">842</div>
+                </div>
+                <div class="card-back-disclaimer">
+                  This hypothetical debit card is issued by Nexus Bank pursuant to license. For customer service, call 1-800-NEXUS-ATM. Use in ATM simulator.
+                </div>
+                <div class="card-hologram"></div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Card Controls & ATM Actions -->
+          <div class="card-management-controls">
+            
+            <div class="card-action-btns">
+              <button class="btn-primary-atm" id="insertSelectedCardBtn">
+                <i class="fa-solid fa-arrow-right-to-bracket"></i> Insert Card into ATM
+              </button>
+              <button class="btn-secondary-atm" id="ejectCardManualBtn">
+                <i class="fa-solid fa-eject"></i> Eject from ATM
+              </button>
+            </div>
+
+            <!-- Card Security Toggles -->
+            <div class="card-security-toggles">
+              <div class="toggle-row">
+                <span class="toggle-info">
+                  <i class="fa-solid fa-snowflake"></i> Freeze / Lock Card
+                </span>
+                <label class="switch">
+                  <input type="checkbox" id="freezeCardToggle">
+                  <span class="slider round"></span>
+                </label>
+              </div>
+
+              <div class="toggle-row">
+                <span class="toggle-info">
+                  <i class="fa-solid fa-globe"></i> International ATM Access
+                </span>
+                <label class="switch">
+                  <input type="checkbox" id="intlAccessToggle" checked>
+                  <span class="slider round"></span>
+                </label>
+              </div>
+
+              <div class="toggle-row">
+                <span class="toggle-info">
+                  <i class="fa-solid fa-cart-shopping"></i> Online & Contactless Pay
+                </span>
+                <label class="switch">
+                  <input type="checkbox" id="contactlessToggle" checked>
+                  <span class="slider round"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Card Selector Dropdown -->
+            <div class="card-switch-dropdown-group">
+              <label for="userCardSelector"><i class="fa-solid fa-wallet"></i> Switch Active Wallet Card:</label>
+              <select id="userCardSelector" class="companion-select">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Account Balance & Daily Limit Overview -->
+        <div class="companion-balances-box">
+          <div class="box-header">
+            <div class="box-title">
+              <i class="fa-solid fa-chart-pie"></i>
+              <h3>Linked Accounts & Limits</h3>
+            </div>
+            <button class="btn-text-action" id="resetDemoStateBtn" title="Reset balances and cards to demo state">
+              <i class="fa-solid fa-rotate-left"></i> Reset Demo
+            </button>
+          </div>
+
+          <div class="accounts-summary-grid">
+            <!-- Checking Widget -->
+            <div class="acc-summary-card">
+              <div class="acc-badge checking"><i class="fa-solid fa-money-check-dollar"></i> Checking</div>
+              <div class="acc-bal" id="dashCheckingBal">₹48,500.00</div>
+              <div class="acc-sub">Account •••• 7819</div>
+            </div>
+
+            <!-- Savings Widget -->
+            <div class="acc-summary-card">
+              <div class="acc-badge savings"><i class="fa-solid fa-piggy-bank"></i> Savings</div>
+              <div class="acc-bal" id="dashSavingsBal">₹1,24,200.50</div>
+              <div class="acc-sub">4.85% APY • •••• 9204</div>
+            </div>
+          </div>
+
+          <!-- Daily Withdrawal Limit Meter -->
+          <div class="daily-limit-meter-box">
+            <div class="meter-labels">
+              <span><i class="fa-solid fa-gauge-high"></i> Daily ATM Withdrawal Limit:</span>
+              <span id="limitUsageText"><strong>₹0.00</strong> / ₹25,000.00 Used</span>
+            </div>
+            <div class="meter-bar-track">
+              <div class="meter-bar-fill" id="limitProgressBar" style="width: 0%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Transaction Ledger & Mini Statement -->
+        <div class="companion-history-box">
+          <div class="box-header">
+            <div class="box-title">
+              <i class="fa-solid fa-receipt"></i>
+              <h3>Live Transaction Ledger</h3>
+            </div>
+            <div class="history-filter-btns">
+              <button class="filter-btn active" data-filter="all">All</button>
+              <button class="filter-btn" data-filter="withdrawal">Withdrawal</button>
+              <button class="filter-btn" data-filter="deposit">Deposit</button>
+              <button class="filter-btn" data-filter="transfer">Transfer</button>
+              <button class="filter-btn icon-only" id="exportCsvBtn" title="Export Ledger to CSV"><i class="fa-solid fa-file-csv"></i></button>
+            </div>
+          </div>
+
+          <div class="history-list-wrapper" id="historyListWrapper">
+            <!-- Dynamically populated transaction cards -->
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL: ACTIVATE NEW ATM CARD WIZARD                      -->
+  <!-- ======================================================== -->
+  <div class="modal-overlay" id="activateCardModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fa-solid fa-credit-card"></i>
+          <h3>Activate New ATM Debit Card</h3>
+        </div>
+        <button class="modal-close-btn" id="closeActivateCardModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-desc">Issue and personalize a brand new hypothetical ATM Card with custom tier styling, 4-digit PIN, and limits.</p>
+
+        <!-- Interactive Preview of New Card -->
+        <div class="new-card-preview" id="newCardPreview">
+          <div class="preview-glow"></div>
+          <div class="new-card-top">
+            <span class="card-bank-name">
+              <img src="assets/nexus-icon-dark.png" alt="NexusBank" class="card-bank-logo-mini">
+              <span>NEXUS BANK</span>
+            </span>
+            <span class="preview-tier" id="previewTierBadge">TITANIUM GOLD</span>
+          </div>
+          <div class="new-card-mid">
+            <div class="emv-chip"></div>
+            <i class="fa-solid fa-wifi"></i>
+          </div>
+          <div class="new-card-number" id="previewCardNumber">4920 •••• •••• 7712</div>
+          <div class="new-card-bottom">
+            <div>
+              <small>CARDHOLDER</small>
+              <strong id="previewHolderName">YOUR NAME</strong>
+            </div>
+            <div>
+              <small>EXPIRES</small>
+              <strong id="previewExpiry">09/30</strong>
+            </div>
+            <div id="previewBrandLogo"><i class="fa-brands fa-cc-mastercard"></i></div>
+          </div>
+        </div>
+
+        <form id="activateCardForm" class="card-form">
+          <div class="form-group">
+            <label for="newCardHolder">Cardholder Full Name:</label>
+            <input type="text" id="newCardHolder" class="form-input" placeholder="e.g. Sarah Connor / Elon Musk" required value="Sarah Connor">
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="newCardTier">Card Tier & Finish:</label>
+              <select id="newCardTier" class="form-select">
+                <option value="titanium-gold">Titanium Gold (VIP)</option>
+                <option value="obsidian-black">Obsidian Black (Exclusive)</option>
+                <option value="cyber-neon">Cyber Neon (Future Tech)</option>
+                <option value="emerald-green">Minimalist Emerald</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="newCardNetwork">Card Network:</label>
+              <select id="newCardNetwork" class="form-select">
+                <option value="visa">Visa Debit</option>
+                <option value="mastercard">Mastercard World</option>
+                <option value="rupay">RuPay Platinum</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="newCardPin">Set 4-Digit Security PIN:</label>
+              <input type="password" id="newCardPin" class="form-input" placeholder="4 digits" maxlength="4" required value="4321">
+            </div>
+            <div class="form-group">
+              <label for="newCardConfirmPin">Confirm 4-Digit PIN:</label>
+              <input type="password" id="newCardConfirmPin" class="form-input" placeholder="4 digits" maxlength="4" required value="4321">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="newCardAccount">Link to Primary Account:</label>
+            <select id="newCardAccount" class="form-select">
+              <option value="checking">Checking Account (•••• 7819)</option>
+              <option value="savings">High-Yield Savings (•••• 9204)</option>
+            </select>
+          </div>
+
+          <div class="modal-form-actions">
+            <button type="button" class="btn-cancel" id="cancelActivateCardBtn">Cancel</button>
+            <button type="submit" class="btn-submit"><i class="fa-solid fa-bolt"></i> Generate & Activate Card</button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL: PRINTABLE THERMAL RECEIPT VIEWER                  -->
+  <!-- ======================================================== -->
+  <div class="modal-overlay" id="thermalReceiptModal">
+    <div class="modal-card receipt-modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fa-solid fa-receipt"></i>
+          <h3>Official ATM Transaction Receipt</h3>
+        </div>
+        <button class="modal-close-btn" id="closeThermalReceiptModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body receipt-modal-body">
+        <!-- Photorealistic Paper Thermal Receipt -->
+        <div class="thermal-receipt-paper" id="printableReceiptArea">
+          <div class="receipt-cutout-top"></div>
+          
+          <div class="receipt-header-center">
+            <img src="assets/nexus-icon-dark.png" alt="NexusBank" class="receipt-modal-logo">
+            <h2 class="r-bank-title">NEXUS BANK ATM</h2>
+            <p class="r-address">TERMINAL #NX-8840 • 750 7TH AVE, NY</p>
+            <p class="r-datetime" id="receiptDateTime">2026-09-01 12:00:00</p>
+          </div>
+
+          <div class="receipt-divider">================================</div>
+
+          <div class="receipt-line-item">
+            <span>TRANSACTION:</span>
+            <strong id="receiptTxType">CASH WITHDRAWAL</strong>
+          </div>
+          <div class="receipt-line-item">
+            <span>CARD NUMBER:</span>
+            <span id="receiptCardMasked">•••• •••• •••• 4242</span>
+          </div>
+          <div class="receipt-line-item">
+            <span>CARDHOLDER:</span>
+            <span id="receiptCardholder">JOHN DOE</span>
+          </div>
+          <div class="receipt-line-item">
+            <span>ACCOUNT TYPE:</span>
+            <span id="receiptAccountType">CHECKING</span>
+          </div>
+          <div class="receipt-line-item">
+            <span>REF NUMBER:</span>
+            <code id="receiptRefNo">NX-99841029</code>
+          </div>
+
+          <div class="receipt-divider">--------------------------------</div>
+
+          <div class="receipt-line-item highlight">
+            <span>AMOUNT:</span>
+            <strong id="receiptAmountVal">₹1,000.00</strong>
+          </div>
+          <div class="receipt-line-item">
+            <span>ATM FEE:</span>
+            <span>₹0.00</span>
+          </div>
+          <div class="receipt-line-item">
+            <span>AVAILABLE BAL:</span>
+            <strong id="receiptAvailBal">₹47,500.00</strong>
+          </div>
+          <div class="receipt-line-item">
+            <span>LEDGER BAL:</span>
+            <span id="receiptLedgerBal">₹47,500.00</span>
+          </div>
+
+          <div class="receipt-divider">================================</div>
+
+          <div class="receipt-barcode-box">
+            <div class="barcode-lines">
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+              <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+            <small id="receiptBarcodeText">*NX8840-2026-09-01-99841029*</small>
+          </div>
+
+          <div class="receipt-footer-msg">
+            THANK YOU FOR BANKING WITH US!<br>
+            24/7 CUSTOMER SUPPORT: 1-800-NEXUS-ATM<br>
+            WWW.NEXUSBANK-SIMULATOR.COM
+          </div>
+
+          <div class="receipt-cutout-bottom"></div>
+        </div>
+
+        <div class="receipt-modal-actions">
+          <button class="btn-print-receipt" id="printReceiptDirectBtn">
+            <i class="fa-solid fa-print"></i> Print Receipt
+          </button>
+          <button class="btn-download-receipt" id="downloadReceiptBtn">
+            <i class="fa-solid fa-download"></i> Save Receipt
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL: OPEN NEW ACCOUNT & AUTO CARD ALLOCATION WIZARD   -->
+  <!-- ======================================================== -->
+  <div class="modal-overlay" id="openAccountModal">
+    <div class="modal-card open-account-modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fa-solid fa-building-columns"></i>
+          <h3>Open New Bank Account & Card Allocation</h3>
+        </div>
+        <button class="modal-close-btn" id="closeOpenAccountModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-desc">
+          Register as a new NexusBank customer. Select your banking lifestyle and our system will <strong>automatically assign and personalize a tailored ATM Debit Card</strong> with unique perks!
+        </p>
+
+        <!-- Dynamic Assigned Card Preview -->
+        <div class="registration-card-preview-container">
+          <div class="new-card-preview tier-obsidian-black" id="regCardPreview">
+            <div class="preview-glow"></div>
+            <div class="new-card-top">
+              <span class="card-bank-name">
+                <img src="assets/nexus-icon-dark.png" alt="NexusBank" class="card-bank-logo-mini">
+                <span>NEXUS BANK</span>
+              </span>
+              <span class="preview-tier" id="regTierBadge">OBSIDIAN PLATINUM</span>
+            </div>
+            <div class="new-card-mid">
+              <div class="emv-chip"></div>
+              <i class="fa-solid fa-wifi"></i>
+              <div class="card-bio-photo-thumb" id="regCardBioPhoto" title="Biometric KYC Verified Identity">
+                <img id="regCardBioImg" src="" alt="Biometric Face" style="display: none;">
+                <div class="bio-placeholder-icon" id="regBioPlaceholder"><i class="fa-solid fa-user-shield"></i></div>
+                <span class="bio-verified-dot" title="Biometric ID Verified"></span>
+              </div>
+              <span class="auto-assigned-tag" id="regPerkBadge"><i class="fa-solid fa-plane-departure"></i> 0% FX Global Perks</span>
+            </div>
+            <div class="new-card-number" id="regCardNumber">4242 •••• •••• 9920</div>
+            <div class="new-card-bottom">
+              <div>
+                <small>NEW ACCOUNT HOLDER</small>
+                <strong id="regHolderName">ALEX MERCER</strong>
+              </div>
+              <div>
+                <small>EXPIRES</small>
+                <strong id="regExpiry">09/31</strong>
+              </div>
+              <div id="regBrandLogo"><i class="fa-brands fa-cc-visa"></i></div>
+            </div>
+          </div>
+        </div>
+
+        <form id="openAccountForm" class="card-form">
+          <!-- Step 1: User Profile -->
+          <div class="form-section-heading"><i class="fa-solid fa-user"></i> 1. Account Holder Information</div>
+          
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="regFullName">Full Legal Name:</label>
+              <input type="text" id="regFullName" class="form-input" placeholder="e.g. Alex Mercer" required value="Alex Mercer">
+            </div>
+            <div class="form-group">
+              <label for="regPhone">Phone / Mobile No:</label>
+              <input type="tel" id="regPhone" class="form-input" placeholder="+1 (555) 234-8900" value="+1 (555) 890-4412">
+            </div>
+          </div>
+
+          <!-- Step 2: Initial Deposit & Account Category -->
+          <div class="form-section-heading"><i class="fa-solid fa-wallet"></i> 2. Account Type & Opening Balance</div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="regAccountType">Primary Account Type:</label>
+              <select id="regAccountType" class="form-select">
+                <option value="checking">Smart Checking Account ($0 Monthly Fee)</option>
+                <option value="savings">High-Yield Savings Account (4.85% APY)</option>
+                <option value="student">Student Zero-Fee Account</option>
+                <option value="wealth">Private Wealth & Investment Account</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="regInitialDeposit">Initial Opening Deposit (₹):</label>
+              <input type="number" id="regInitialDeposit" class="form-input" min="500" step="500" value="25000" required>
+            </div>
+          </div>
+
+          <!-- Step 3: Lifestyle & Card Allocation Selector -->
+          <div class="form-section-heading"><i class="fa-solid fa-wand-magic-sparkles"></i> 3. Banking Lifestyle & Preference (Auto-Assigns Card)</div>
+          
+          <div class="preference-cards-grid">
+            
+            <label class="pref-card-option active" data-tier="obsidian-black" data-network="visa" data-perk="0% FX Global Perks" data-title="OBSIDIAN PLATINUM">
+              <input type="radio" name="bankingPref" value="traveler" checked>
+              <div class="pref-icon"><i class="fa-solid fa-plane-departure"></i></div>
+              <div class="pref-details">
+                <strong class="pref-name">Global Jetsetter / Traveler</strong>
+                <span class="pref-desc">Worldwide zero foreign fees, ₹50,000 daily limit</span>
+                <span class="pref-card-tag obsidian">Auto: Obsidian Platinum Card</span>
+              </div>
+            </label>
+
+            <label class="pref-card-option" data-tier="titanium-gold" data-network="mastercard" data-perk="VIP Lounge & Limit" data-title="TITANIUM GOLD">
+              <input type="radio" name="bankingPref" value="vip">
+              <div class="pref-icon"><i class="fa-solid fa-crown"></i></div>
+              <div class="pref-details">
+                <strong class="pref-name">VIP Wealth & High Spender</strong>
+                <span class="pref-desc">Concierge service, airport lounge, ₹1,00,000 daily limit</span>
+                <span class="pref-card-tag gold">Auto: Titanium Gold Card</span>
+              </div>
+            </label>
+
+            <label class="pref-card-option" data-tier="cyber-neon" data-network="visa" data-perk="Instant WebPay & Crypto" data-title="CYBER NEON">
+              <input type="radio" name="bankingPref" value="tech">
+              <div class="pref-icon"><i class="fa-solid fa-bolt"></i></div>
+              <div class="pref-details">
+                <strong class="pref-name">Tech & Cyber Enthusiast</strong>
+                <span class="pref-desc">Instant virtual contactless pay, crypto rewards</span>
+                <span class="pref-card-tag neon">Auto: Cyber Neon Card</span>
+              </div>
+            </label>
+
+            <label class="pref-card-option" data-tier="emerald-green" data-network="rupay" data-perk="5% Cash Back Rewards" data-title="MINIMALIST EMERALD">
+              <input type="radio" name="bankingPref" value="saver">
+              <div class="pref-icon"><i class="fa-solid fa-piggy-bank"></i></div>
+              <div class="pref-details">
+                <strong class="pref-name">Everyday Saver & Cashback</strong>
+                <span class="pref-desc">5% cashback on groceries & dining, zero fees</span>
+                <span class="pref-card-tag emerald">Auto: Minimalist Emerald Card</span>
+              </div>
+            </label>
+
+          </div>
+
+          <!-- Step 4: Live Photo KYC & Biometric Identity Verification -->
+          <div class="form-section-heading"><i class="fa-solid fa-camera"></i> 4. Live Camera Photo KYC & Biometric Verification</div>
+
+          <div class="kyc-camera-module">
+            <div class="kyc-camera-container" id="kycCameraContainer">
+              <!-- Video Stream -->
+              <video id="kycVideoFeed" autoplay playsinline muted></video>
+              <canvas id="kycCanvas" style="display:none;"></canvas>
+
+              <!-- Face Guide Overlay -->
+              <div class="kyc-face-guide" id="kycFaceGuide">
+                <div class="kyc-oval-reticle">
+                  <span class="kyc-laser"></span>
+                </div>
+                <div class="kyc-corner-bracket tl"></div>
+                <div class="kyc-corner-bracket tr"></div>
+                <div class="kyc-corner-bracket bl"></div>
+                <div class="kyc-corner-bracket br"></div>
+              </div>
+
+              <!-- Live Status Pill -->
+              <div class="kyc-live-badge" id="kycLiveBadge">
+                <span class="pulse-dot red" id="kycCamDot"></span>
+                <span id="kycStatusText">Webcam Ready • Click Start</span>
+              </div>
+
+              <!-- Countdown Display -->
+              <div class="kyc-countdown" id="kycCountdown" style="display: none;">3</div>
+
+              <!-- Flash Effect -->
+              <div class="kyc-flash-screen" id="kycFlashScreen"></div>
+
+              <!-- Captured Photo Preview Layer -->
+              <div class="kyc-captured-overlay" id="kycCapturedOverlay" style="display:none;">
+                <img id="kycCapturedImg" src="" alt="Captured KYC Face">
+                <div class="kyc-verified-badge"><i class="fa-solid fa-circle-check"></i> BIOMETRIC PHOTO CAPTURED</div>
+                <div class="kyc-liveness-tag" id="kycLivenessTag"><i class="fa-solid fa-shield-check"></i> 99.8% LIVENESS VERIFIED (ISO/IEC 30107-3)</div>
+              </div>
+
+              <!-- Liveness Interactive Prompt Overlay -->
+              <div class="kyc-liveness-prompt-overlay" id="kycLivenessPromptOverlay" style="display: none;">
+                <div class="liveness-radar-spinner"></div>
+                <span class="liveness-prompt-title" id="livenessPromptTitle">Blink Eyes Twice</span>
+                <span class="liveness-prompt-step" id="livenessPromptStep">Step 1 of 2: Anti-Spoofing Depth Check</span>
+              </div>
+            </div>
+
+            <!-- KYC Camera Controls -->
+            <div class="kyc-controls-row">
+              <button type="button" class="btn-kyc-action start" id="startKycCamBtn">
+                <i class="fa-solid fa-video"></i> Start Webcam
+              </button>
+              <button type="button" class="btn-kyc-action liveness" id="runLivenessCheckBtn" style="display:none;">
+                <i class="fa-solid fa-shield-halved"></i> Run Liveness & Anti-Spoofing
+              </button>
+              <button type="button" class="btn-kyc-action capture" id="captureKycPhotoBtn" style="display:none;">
+                <i class="fa-solid fa-camera"></i> Take Selfie Photo
+              </button>
+              <button type="button" class="btn-kyc-action retake" id="retakeKycPhotoBtn" style="display:none;">
+                <i class="fa-solid fa-rotate-left"></i> Retake
+              </button>
+            </div>
+
+            <!-- Fallback Demo Avatars in case camera is not available -->
+            <div class="kyc-fallback-box">
+              <span class="fallback-label"><i class="fa-solid fa-id-badge"></i> Or select a biometric security persona:</span>
+              <div class="avatar-chips-grid">
+                <button type="button" class="avatar-chip active" data-avatar="cyber" title="Alex Mercer (Cyber Specialist)">
+                  <span class="avatar-preview-icon"><i class="fa-solid fa-user-astronaut"></i></span>
+                  <span>Cyber Nomad</span>
+                </button>
+                <button type="button" class="avatar-chip" data-avatar="vip" title="Elena Vance (Private Wealth)">
+                  <span class="avatar-preview-icon"><i class="fa-solid fa-user-tie"></i></span>
+                  <span>VIP Executive</span>
+                </button>
+                <button type="button" class="avatar-chip" data-avatar="traveler" title="Marcus Vance (Global Explorer)">
+                  <span class="avatar-preview-icon"><i class="fa-solid fa-user-ninja"></i></span>
+                  <span>Global Citizen</span>
+                </button>
+                <button type="button" class="avatar-chip" data-avatar="emerald" title="Maya Lin (Eco FinTech)">
+                  <span class="avatar-preview-icon"><i class="fa-solid fa-user-gear"></i></span>
+                  <span>Everyday Saver</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 5: Security PIN -->
+          <div class="form-section-heading"><i class="fa-solid fa-shield-keyhole"></i> 5. Set 4-Digit ATM Security PIN</div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="regPin">Create 4-Digit PIN:</label>
+              <input type="password" id="regPin" class="form-input" maxlength="4" placeholder="4 digits" value="5566" required>
+            </div>
+            <div class="form-group">
+              <label for="regConfirmPin">Confirm 4-Digit PIN:</label>
+              <input type="password" id="regConfirmPin" class="form-input" maxlength="4" placeholder="4 digits" value="5566" required>
+            </div>
+          </div>
+
+          <div class="modal-form-actions">
+            <button type="button" class="btn-cancel" id="cancelOpenAccountBtn">Cancel</button>
+            <button type="submit" class="btn-submit"><i class="fa-solid fa-id-card"></i> Create Account & Issue Card</button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL: ATM HARDWARE DIAGNOSTICS & CASH CASSETTE VAULT     -->
+  <!-- ======================================================== -->
+  <div class="modal-overlay" id="atmDiagnosticsModal">
+    <div class="modal-card diagnostics-modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <img src="assets/nexus-icon-dark.png" alt="NexusBank" class="modal-logo-icon">
+          <h3>ATM Hardware Diagnostics & Cassette Vault</h3>
+        </div>
+        <button class="modal-close-btn" id="closeDiagnosticsModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="modal-desc">
+          Live IoT telemetry & cassette banknote inventory for Terminal <strong>#NX-8840-NY</strong>. Monitored via secure core banking host.
+        </p>
+
+        <!-- Vault Overall Liquidity Stat -->
+        <div class="vault-overview-strip">
+          <div class="vault-stat-box">
+            <span class="v-label"><i class="fa-solid fa-vault"></i> Total Vault Liquidity:</span>
+            <strong class="v-value" id="vaultTotalLiquidity">₹18,20,000.00</strong>
+          </div>
+          <div class="vault-stat-box">
+            <span class="v-label"><i class="fa-solid fa-microchip"></i> System Health:</span>
+            <span class="v-health-badge normal"><i class="fa-solid fa-circle-check"></i> ALL SYSTEMS OPTIMAL</span>
+          </div>
+        </div>
+
+        <!-- 4 Cash Dispenser Cassettes -->
+        <div class="cassette-monitoring-grid">
+          
+          <!-- Cassette 1: ₹500 -->
+          <div class="cassette-card">
+            <div class="c-header">
+              <span class="c-title">Cassette #1 (₹500 Notes)</span>
+              <span class="c-notes-badge" id="c500NotesBadge">1,840 / 2,000</span>
+            </div>
+            <div class="c-progress-track">
+              <div class="c-progress-fill" id="c500Fill" style="width: 92%;"></div>
+            </div>
+            <div class="c-sub-info">
+              <span>Total Value: <strong id="c500Value">₹9,20,000</strong></span>
+              <span class="c-status text-success" id="c500Status">Optimal (92%)</span>
+            </div>
+          </div>
+
+          <!-- Cassette 2: ₹200 -->
+          <div class="cassette-card">
+            <div class="c-header">
+              <span class="c-title">Cassette #2 (₹200 Notes)</span>
+              <span class="c-notes-badge" id="c200NotesBadge">1,450 / 2,000</span>
+            </div>
+            <div class="c-progress-track">
+              <div class="c-progress-fill" id="c200Fill" style="width: 72.5%;"></div>
+            </div>
+            <div class="c-sub-info">
+              <span>Total Value: <strong id="c200Value">₹2,90,000</strong></span>
+              <span class="c-status text-success" id="c200Status">Optimal (72.5%)</span>
+            </div>
+          </div>
+
+          <!-- Cassette 3: ₹100 -->
+          <div class="cassette-card">
+            <div class="c-header">
+              <span class="c-title">Cassette #3 (₹100 Notes)</span>
+              <span class="c-notes-badge" id="c100NotesBadge">1,920 / 2,000</span>
+            </div>
+            <div class="c-progress-track">
+              <div class="c-progress-fill" id="c100Fill" style="width: 96%;"></div>
+            </div>
+            <div class="c-sub-info">
+              <span>Total Value: <strong id="c100Value">₹1,92,000</strong></span>
+              <span class="c-status text-success" id="c100Status">Optimal (96%)</span>
+            </div>
+          </div>
+
+          <!-- Cassette 4: ₹50 -->
+          <div class="cassette-card">
+            <div class="c-header">
+              <span class="c-title">Cassette #4 (₹50 Notes)</span>
+              <span class="c-notes-badge" id="c50NotesBadge">980 / 1,000</span>
+            </div>
+            <div class="c-progress-track">
+              <div class="c-progress-fill" id="c50Fill" style="width: 98%;"></div>
+            </div>
+            <div class="c-sub-info">
+              <span>Total Value: <strong id="c50Value">₹49,000</strong></span>
+              <span class="c-status text-success" id="c50Status">Optimal (98%)</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Hardware Peripherals Telemetry Grid -->
+        <div class="peripherals-telemetry-grid">
+          <div class="telemetry-item">
+            <span class="t-name"><i class="fa-solid fa-receipt"></i> Thermal Paper Roll</span>
+            <strong class="t-val" id="telemetryPaperRoll">88% (420 Receipts Left)</strong>
+          </div>
+          <div class="telemetry-item">
+            <span class="t-name"><i class="fa-solid fa-shield-virus"></i> Anti-Skim Jam Detector</span>
+            <strong class="t-val text-success">SECURE (No Obstruction)</strong>
+          </div>
+          <div class="telemetry-item">
+            <span class="t-name"><i class="fa-solid fa-temperature-half"></i> Vault Internal Temp</span>
+            <strong class="t-val">21.8°C / 71.2°F</strong>
+          </div>
+          <div class="telemetry-item">
+            <span class="t-name"><i class="fa-solid fa-network-wired"></i> Host Network Ping</span>
+            <strong class="t-val text-success">14ms (Encrypted TLS 1.3)</strong>
+          </div>
+        </div>
+
+        <!-- Technician Actions Toolbar -->
+        <div class="diagnostics-action-bar">
+          <button type="button" class="btn-tech refill" id="refillVaultBtn">
+            <i class="fa-solid fa-arrows-rotate"></i> Replenish All Cassettes (100%)
+          </button>
+          <button type="button" class="btn-tech paper" id="refillPaperBtn">
+            <i class="fa-solid fa-scroll"></i> Replace Thermal Paper Roll
+          </button>
+          <button type="button" class="btn-tech test" id="testDispenserMotorBtn">
+            <i class="fa-solid fa-gear"></i> Test Dispenser Motor
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio Synthesizer Status Toast Notification -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>

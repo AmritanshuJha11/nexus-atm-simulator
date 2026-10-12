@@ -1,0 +1,9 @@
+# System and temporary files
+.DS_Store
+Thumbs.db
+*.log
+temp_profile/
+
+# Scratch & test assets
+scratch/
+test_ids.js
