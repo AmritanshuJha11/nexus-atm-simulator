@@ -113,7 +113,7 @@
       <!-- ======================================================== -->
       <!-- LEFT SECTION: PHOTOREALISTIC PHYSICAL ATM MACHINE KIOSK  -->
       <!-- ======================================================== -->
-      <section class="atm-kiosk-section" id="kioskSection">
+      <section class="atm-kiosk-section view-active" id="kioskSection">
         <div class="atm-chassis">
           
           <!-- ATM Top Illuminated Header -->
@@ -1235,9 +1235,14 @@
               <i class="fa-solid fa-id-card-clip"></i>
               <h3>Active ATM Card</h3>
             </div>
-            <button class="btn-create-card" id="openActivateCardModalBtn">
-              <i class="fa-solid fa-plus"></i> Activate New Card
-            </button>
+            <div class="box-actions">
+              <button class="btn-exit-dashboard" id="exitDashboardBtn" title="Exit Dashboard & Return to ATM Kiosk">
+                <i class="fa-solid fa-arrow-left"></i> Exit to ATM
+              </button>
+              <button class="btn-create-card" id="openActivateCardModalBtn">
+                <i class="fa-solid fa-plus"></i> Activate New Card
+              </button>
+            </div>
           </div>
 
           <!-- 3D Interactive Realistic Debit Card -->

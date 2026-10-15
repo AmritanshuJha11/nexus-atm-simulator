@@ -483,6 +483,12 @@ class AtmController {
       audio.speak(speechPrompt);
     }
 
+    // Clear eject countdown timer if moving to another screen
+    if (this.ejectScreenTimeout && screenId !== 'screenCardEjected') {
+      clearTimeout(this.ejectScreenTimeout);
+      this.ejectScreenTimeout = null;
+    }
+
     // Reset auto-eject timer
     this.resetInactivityTimer();
   }
@@ -549,11 +555,24 @@ class AtmController {
   }
 
   ejectCard(customReason = '') {
-    if (!this.isCardInserted) return;
+    if (!this.isCardInserted && !this.isAuthenticated && this.currentScreen === 'screenWelcome') {
+      return;
+    }
 
+    const hadCard = this.isCardInserted;
     this.isCardInserted = false;
     this.isAuthenticated = false;
     this.pinBuffer = '';
+    this.withdrawInput = '';
+
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+    if (this.autoEjectTimer) {
+      clearTimeout(this.autoEjectTimer);
+      this.autoEjectTimer = null;
+    }
 
     audio.playCardInsertSound();
 
@@ -566,9 +585,23 @@ class AtmController {
     const statusText = document.getElementById('cardStatusText');
     if (statusText) statusText.textContent = 'NO CARD INSERTED';
 
-    this.switchScreen('screenCardEjected', 'Please take your card, cash, and receipt.');
-    if (customReason) showToast(customReason, 'error');
-    else showToast('Card safely ejected from ATM terminal.', 'success');
+    if (hadCard) {
+      this.switchScreen('screenCardEjected', 'Please take your card, cash, and receipt.');
+      if (customReason) showToast(customReason, 'error');
+      else showToast('Card safely ejected. Session ended.', 'success');
+
+      // Automatically return to welcome screen after 5 seconds if left unattended
+      if (this.ejectScreenTimeout) clearTimeout(this.ejectScreenTimeout);
+      this.ejectScreenTimeout = setTimeout(() => {
+        if (this.currentScreen === 'screenCardEjected') {
+          this.switchScreen('screenWelcome');
+        }
+      }, 5000);
+    } else {
+      this.switchScreen('screenWelcome', 'Session ended securely. Thank you for banking with Nexus.');
+      if (customReason) showToast(customReason, 'error');
+      else showToast('Session ended securely.', 'success');
+    }
   }
 
   // ==========================================
@@ -764,6 +797,10 @@ class AtmController {
       } else if (key === 'ENTER') {
         this.submitPin();
       }
+    } else if (this.currentScreen === 'screenMainMenu') {
+      if (key === 'CANCEL') {
+        this.ejectCard('Session ended by customer.');
+      }
     } else if (this.currentScreen === 'screenWithdraw') {
       if (key >= '0' && key <= '9') {
         if (this.withdrawInput.length < 5) {
@@ -782,6 +819,14 @@ class AtmController {
         this.switchScreen('screenMainMenu');
       } else if (key === 'ENTER') {
         this.confirmCustomWithdrawal();
+      }
+    } else if (this.currentScreen === 'screenBalance' || this.currentScreen === 'screenFastCash' || this.currentScreen === 'screenDeposit' || this.currentScreen === 'screenTransfer' || this.currentScreen === 'screenPinChange' || this.currentScreen === 'screenStatement') {
+      if (key === 'CANCEL') {
+        this.switchScreen('screenMainMenu');
+      }
+    } else if (this.currentScreen === 'screenCardEjected') {
+      if (key === 'ENTER' || key === 'CANCEL' || key === 'CLEAR') {
+        this.switchScreen('screenWelcome');
       }
     } else if (this.currentScreen === 'screenWelcome') {
       if (key === 'ENTER') {
@@ -929,6 +974,10 @@ class AtmController {
       case 'screenCardless':
         if (keyName === 'F4') this.switchScreen('screenWelcome');
         if (keyName === 'F8') this.authorizeCardlessOtp();
+        break;
+
+      case 'screenCardEjected':
+        if (keyName === 'F4' || keyName === 'F8') this.switchScreen('screenWelcome');
         break;
 
       default:
@@ -2523,6 +2572,19 @@ function initEventListeners() {
         kiosk.classList.remove('view-active');
       }
     });
+  });
+
+  // Dedicated Exit Dashboard Button (Digital Companion -> ATM Kiosk)
+  document.getElementById('exitDashboardBtn')?.addEventListener('click', () => {
+    document.querySelectorAll('.view-tab-btn').forEach(t => t.classList.remove('active'));
+    document.querySelector('.view-tab-btn[data-view="kiosk"]')?.classList.add('active');
+    const kiosk = document.getElementById('kioskSection');
+    const dash = document.getElementById('dashboardSection');
+    kiosk?.classList.add('view-active');
+    dash?.classList.remove('view-active');
+    kiosk?.scrollIntoView({ behavior: 'smooth' });
+    audio.playEnterTone();
+    showToast('Returned to ATM Terminal.', 'info');
   });
 
   // Card Activation Modal Controls

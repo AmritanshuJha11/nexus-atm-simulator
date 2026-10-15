@@ -2586,6 +2586,36 @@ html, body {
   color: var(--text-primary);
 }
 
+.box-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-exit-dashboard {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #f87171;
+  font-family: var(--font-main);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  transition: var(--transition-fast);
+}
+
+.btn-exit-dashboard:hover {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+  box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+  transform: translateY(-1px);
+}
+
 .btn-create-card {
   background: rgba(6, 182, 212, 0.15);
   border: 1px solid var(--accent-cyan);
@@ -4669,16 +4699,16 @@ input:checked + .slider::before {
   }
 
   .atm-kiosk-section, .digital-companion-section {
-    display: none;
+    display: none !important;
   }
 
-  .atm-kiosk-section.view-active, .digital-companion-section.view-active {
-    display: flex;
+  .atm-kiosk-section.view-active {
+    display: flex !important;
   }
 
-  .digital-companion-section {
-    display: flex;
-    flex-direction: column;
+  .digital-companion-section.view-active {
+    display: flex !important;
+    flex-direction: column !important;
   }
 
   .atm-lower-deck {
