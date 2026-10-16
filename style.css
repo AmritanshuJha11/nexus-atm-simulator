@@ -3031,6 +3031,8 @@ input:checked + .slider::before {
 
 .acc-badge.checking { color: var(--accent-cyan); }
 .acc-badge.savings { color: var(--accent-green); }
+.acc-badge.student { color: var(--accent-gold); }
+.acc-badge.wealth { color: #c084fc; }
 
 .acc-bal {
   font-family: var(--font-mono);
@@ -3416,6 +3418,34 @@ input:checked + .slider::before {
   border-radius: var(--radius-md);
   font-weight: 600;
   cursor: pointer;
+  transition: all var(--trans-fast);
+}
+
+.btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.btn-reset-form {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+  padding: 0.6rem 1.25rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  transition: all var(--trans-fast);
+}
+
+.btn-reset-form:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.3);
+  transform: translateY(-1px);
 }
 
 .btn-submit {
@@ -5424,4 +5454,477 @@ input:checked + .slider::before {
   background: var(--chassis-border);
   color: var(--text-primary);
 }
+
+/* ==========================================================================
+   TWO PROFILES: CUSTOMER (USER) VS PASSWORD-PROTECTED BANK OFFICIAL
+   ========================================================================== */
+
+/* Top Navigation Profile Capsule */
+.nav-profile-capsule {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.profile-pill-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-full);
+  padding: 3px;
+  gap: 3px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+}
+
+.profile-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.85rem;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--trans-fast);
+}
+
+.profile-mode-btn:hover {
+  color: var(--text-primary);
+}
+
+.profile-mode-btn.active {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  color: #020617;
+  box-shadow: 0 0 12px var(--accent-cyan-glow);
+}
+
+.profile-lock-badge {
+  font-size: 0.68rem;
+  opacity: 0.8;
+  margin-left: 2px;
+}
+
+.profile-mode-btn.active .profile-lock-badge {
+  color: #020617;
+}
+
+/* Official Mode Active Indicator in Top Nav */
+.official-active-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.25);
+  animation: officialPulseGlow 3s infinite ease-in-out;
+}
+
+@keyframes officialPulseGlow {
+  0%, 100% { border-color: rgba(16, 185, 129, 0.4); box-shadow: 0 0 12px rgba(16, 185, 129, 0.2); }
+  50% { border-color: rgba(16, 185, 129, 0.8); box-shadow: 0 0 20px rgba(16, 185, 129, 0.4); }
+}
+
+.official-label {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent-green);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.btn-lock-official {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: all var(--trans-fast);
+}
+
+.btn-lock-official:hover {
+  background: rgba(239, 68, 68, 0.4);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+}
+
+/* BANK OFFICIAL ONLY: Confidential Treasury & Cash Flow Summary Panel */
+.official-treasury-panel {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.85));
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-xl);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(16, 185, 129, 0.2);
+  backdrop-filter: blur(12px);
+}
+
+.official-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.audit-confidential-pill {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.treasury-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
+}
+
+.treasury-stat-card {
+  background: var(--bg-tertiary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  transition: all var(--trans-fast);
+}
+
+.treasury-stat-card:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.25);
+}
+
+.t-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.t-icon.vault { background: rgba(245, 158, 11, 0.15); color: var(--accent-gold); }
+.t-icon.deposit { background: rgba(16, 185, 129, 0.15); color: var(--accent-green); }
+.t-icon.withdraw { background: rgba(239, 68, 68, 0.15); color: var(--accent-red); }
+.t-icon.net { background: rgba(6, 182, 212, 0.15); color: var(--accent-cyan); }
+
+.t-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  overflow: hidden;
+}
+
+.t-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.t-value {
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.t-sub {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+/* User Profile: Sensitive Bank Ledger Protected Shield Banner */
+.bank-sensitive-lock-shield {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 2.25rem 1.5rem;
+  background: radial-gradient(circle at center, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-lg);
+  margin-top: 0.5rem;
+}
+
+.lock-shield-halo {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.85rem;
+  color: var(--accent-cyan);
+  box-shadow: 0 0 25px var(--accent-cyan-glow);
+  margin-bottom: 1rem;
+}
+
+.bank-sensitive-lock-shield h4 {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+}
+
+.bank-sensitive-lock-shield p {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  max-width: 440px;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.lock-shield-features {
+  display: flex;
+  gap: 1.25rem;
+  font-size: 0.74rem;
+  color: var(--accent-green);
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+}
+
+.lock-shield-features span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.btn-unlock-official-prompt {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.2), rgba(59, 130, 246, 0.2));
+  border: 1px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.65rem 1.4rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all var(--trans-fast);
+  box-shadow: 0 0 15px var(--accent-cyan-glow);
+}
+
+.btn-unlock-official-prompt:hover {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  color: #020617;
+  transform: translateY(-1px);
+}
+
+/* Customer Security Guide & Helpline Card */
+.customer-security-guide-box {
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-xl);
+  padding: 1.25rem;
+  margin-top: 1rem;
+}
+
+.guide-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.guide-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.guide-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  background: var(--bg-tertiary);
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.guide-item i {
+  color: var(--accent-gold);
+  font-size: 0.85rem;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+/* Bank Official Security Portal Modal */
+.official-auth-modal-card {
+  max-width: 520px;
+  background: linear-gradient(135deg, #0b1120 0%, #0f172a 100%);
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 30px var(--accent-cyan-glow);
+}
+
+.auth-clearance-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  background: rgba(6, 182, 212, 0.1);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.auth-shield-icon {
+  font-size: 1.5rem;
+  color: var(--accent-cyan);
+}
+
+.auth-strip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.auth-strip-text strong {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.auth-strip-text span {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.auth-instruction {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper .form-input {
+  width: 100%;
+  padding-right: 2.75rem;
+}
+
+.btn-toggle-pwd {
+  position: absolute;
+  right: 0.75rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--trans-fast);
+}
+
+.btn-toggle-pwd:hover {
+  color: var(--text-primary);
+}
+
+.auth-demo-hint {
+  font-size: 0.72rem;
+  color: var(--accent-cyan);
+  margin-top: 0.45rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.auth-quick-actions {
+  margin-top: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.btn-biometric-bypass {
+  width: 100%;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: var(--accent-green);
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all var(--trans-fast);
+}
+
+.btn-biometric-bypass:hover {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: rgba(16, 185, 129, 0.6);
+  color: #fff;
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+}
+
+/* Responsive adjustments for two profiles */
+@media (max-width: 1100px) {
+  .treasury-stats-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .guide-grid {
+    grid-template-columns: 1fr;
+  }
+  .treasury-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 

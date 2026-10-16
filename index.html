@@ -44,13 +44,35 @@
       </div>
 
       <div class="nav-center-status">
-        <button class="terminal-status-pill clickable" id="atmStatusPill" title="Click to view ATM Hardware Diagnostics & Vault Cassettes">
+        <button class="terminal-status-pill clickable" id="atmStatusPill" title="Click to view ATM Hardware Diagnostics & Vault Cassettes (Official Authorization Required)">
           <span class="pulse-dot"></span>
           <span class="status-text">ATM ID: <strong id="atmIdDisplay">NX-8840-NY</strong></span>
           <span class="status-divider">•</span>
-          <span class="status-online"><i class="fa-solid fa-signal"></i> Network 100% Online</span>
-          <span class="status-diag-tag"><i class="fa-solid fa-server"></i> Vault Diag</span>
+          <span class="status-online"><i class="fa-solid fa-signal"></i> Online</span>
+          <span class="status-diag-tag" id="statusDiagTag"><i class="fa-solid fa-lock"></i> Vault Locked</span>
         </button>
+      </div>
+
+      <!-- Two Profiles Mode Switcher: User (Customer) vs Password-Protected Bank Official -->
+      <div class="nav-profile-capsule" id="navProfileCapsule">
+        <div class="profile-pill-toggle" id="profilePillToggle">
+          <button type="button" class="profile-mode-btn active" id="profileUserBtn" title="Customer / ATM User Profile">
+            <i class="fa-solid fa-user"></i>
+            <span>Customer</span>
+          </button>
+          <button type="button" class="profile-mode-btn" id="profileOfficialBtn" title="Bank Official Profile (Password Protected)">
+            <i class="fa-solid fa-building-shield"></i>
+            <span>Bank Official</span>
+            <span class="profile-lock-badge"><i class="fa-solid fa-lock"></i></span>
+          </button>
+        </div>
+        <div class="official-active-indicator" id="officialActiveIndicator" style="display: none;">
+          <span class="pulse-dot green"></span>
+          <span class="official-label"><i class="fa-solid fa-shield-check"></i> Official Mode</span>
+          <button type="button" class="btn-lock-official" id="btnLockOfficial" title="Lock & Return to Customer Profile">
+            <i class="fa-solid fa-lock"></i> Lock
+          </button>
+        </div>
       </div>
 
       <div class="nav-actions">
@@ -1381,7 +1403,7 @@
             </button>
           </div>
 
-          <div class="accounts-summary-grid">
+          <div class="accounts-summary-grid" id="accountsSummaryGrid">
             <!-- Checking Widget -->
             <div class="acc-summary-card">
               <div class="acc-badge checking"><i class="fa-solid fa-money-check-dollar"></i> Checking</div>
@@ -1409,14 +1431,59 @@
           </div>
         </div>
 
-        <!-- Live Transaction Ledger & Mini Statement -->
-        <div class="companion-history-box">
+        <!-- BANK OFFICIALS ONLY: Confidential Treasury & Cash Flow Summary Panel -->
+        <div class="official-treasury-panel" id="officialTreasuryPanel" style="display: none;">
+          <div class="official-panel-header">
+            <div class="box-title">
+              <i class="fa-solid fa-vault"></i>
+              <h3>Bank Vault & Cash Flow Telemetry (Official Audit)</h3>
+            </div>
+            <span class="audit-confidential-pill"><i class="fa-solid fa-eye-slash"></i> SENSITIVE BANK DATA</span>
+          </div>
+          <div class="treasury-stats-grid">
+            <div class="treasury-stat-card">
+              <div class="t-icon vault"><i class="fa-solid fa-vault"></i></div>
+              <div class="t-info">
+                <span class="t-label">Total Vault Reserves</span>
+                <strong class="t-value" id="treasuryVaultLiquidity">₹18,20,000.00</strong>
+                <span class="t-sub" id="treasuryCassetteSummary">4 Dispenser Cassettes</span>
+              </div>
+            </div>
+            <div class="treasury-stat-card">
+              <div class="t-icon deposit"><i class="fa-solid fa-arrow-down"></i></div>
+              <div class="t-info">
+                <span class="t-label">Total Bank Deposits</span>
+                <strong class="t-value" id="treasuryTotalDeposits">₹32,000.00</strong>
+                <span class="t-sub" id="treasuryDepositCount">1 Deposits Processed</span>
+              </div>
+            </div>
+            <div class="treasury-stat-card">
+              <div class="t-icon withdraw"><i class="fa-solid fa-arrow-up"></i></div>
+              <div class="t-info">
+                <span class="t-label">Total Bank Withdrawals</span>
+                <strong class="t-value" id="treasuryTotalWithdrawals">₹2,000.00</strong>
+                <span class="t-sub" id="treasuryWithdrawCount">1 Dispenses Completed</span>
+              </div>
+            </div>
+            <div class="treasury-stat-card">
+              <div class="t-icon net"><i class="fa-solid fa-scale-balanced"></i></div>
+              <div class="t-info">
+                <span class="t-label">Terminal Net Cash Flow</span>
+                <strong class="t-value" id="treasuryNetCashFlow">+₹30,000.00</strong>
+                <span class="t-sub" id="treasuryFlowStatus">Net Cash Influx</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Transaction Ledger & Mini Statement (Protected in User Profile, Unlocked in Official Profile) -->
+        <div class="companion-history-box" id="companionHistoryBox">
           <div class="box-header">
             <div class="box-title">
               <i class="fa-solid fa-receipt"></i>
-              <h3>Live Transaction Ledger</h3>
+              <h3 id="ledgerBoxTitle">Bank Audit Ledger</h3>
             </div>
-            <div class="history-filter-btns">
+            <div class="history-filter-btns" id="historyFilterBtns" style="display: none;">
               <button class="filter-btn active" data-filter="all">All</button>
               <button class="filter-btn" data-filter="withdrawal">Withdrawal</button>
               <button class="filter-btn" data-filter="deposit">Deposit</button>
@@ -1425,8 +1492,53 @@
             </div>
           </div>
 
-          <div class="history-list-wrapper" id="historyListWrapper">
+          <!-- User Profile View: Sensitive Bank Ledger Protected Card -->
+          <div class="bank-sensitive-lock-shield" id="userLedgerLockedBanner">
+            <div class="lock-shield-halo">
+              <i class="fa-solid fa-user-lock"></i>
+            </div>
+            <h4>Bank Master Ledger & Cash Flow Protected</h4>
+            <p>
+              Sensitive financial records, customer transaction history, and cumulative deposit/withdrawal totals are restricted to <strong>Authorized Bank Officials</strong>.
+            </p>
+            <div class="lock-shield-features">
+              <span><i class="fa-solid fa-shield-halved"></i> Customer Privacy Protection</span>
+              <span><i class="fa-solid fa-circle-check"></i> ISO/IEC 27001 Certified Banking</span>
+            </div>
+            <button type="button" class="btn-unlock-official-prompt" id="promptOfficialFromLedgerBtn">
+              <i class="fa-solid fa-key"></i> Bank Official Login to Access
+            </button>
+          </div>
+
+          <!-- Official Profile View: Live Transaction Ledger -->
+          <div class="history-list-wrapper" id="historyListWrapper" style="display: none;">
             <!-- Dynamically populated transaction cards -->
+          </div>
+        </div>
+
+        <!-- Customer Security Tips & Emergency Help Guide (Visible in Customer Profile) -->
+        <div class="customer-security-guide-box" id="customerSecurityGuideBox">
+          <div class="guide-header">
+            <i class="fa-solid fa-shield-cat"></i>
+            <h4>ATM Customer Security & Helpline</h4>
+          </div>
+          <div class="guide-grid">
+            <div class="guide-item">
+              <i class="fa-solid fa-hand"></i>
+              <span>Shield your 4-digit PIN with your hand while typing on the keypad.</span>
+            </div>
+            <div class="guide-item">
+              <i class="fa-solid fa-receipt"></i>
+              <span>Always collect your dispensed cash notes and printed thermal receipt.</span>
+            </div>
+            <div class="guide-item">
+              <i class="fa-solid fa-phone-volume"></i>
+              <span>Suspicious activity? Call 24/7 Helpline: 1-800-NEXUS-ATM.</span>
+            </div>
+            <div class="guide-item">
+              <i class="fa-solid fa-snowflake"></i>
+              <span>Instantly freeze your debit card using the toggle switch above if lost.</span>
+            </div>
           </div>
         </div>
 
@@ -1696,11 +1808,11 @@
           <div class="form-grid-2">
             <div class="form-group">
               <label for="regFullName">Full Legal Name:</label>
-              <input type="text" id="regFullName" class="form-input" placeholder="e.g. Alex Mercer" required value="Alex Mercer">
+              <input type="text" id="regFullName" class="form-input" placeholder="e.g. Alex Mercer" required>
             </div>
             <div class="form-group">
               <label for="regPhone">Phone / Mobile No:</label>
-              <input type="tel" id="regPhone" class="form-input" placeholder="+1 (555) 234-8900" value="+1 (555) 890-4412">
+              <input type="tel" id="regPhone" class="form-input" placeholder="+1 (555) 234-8900">
             </div>
           </div>
 
@@ -1720,7 +1832,7 @@
 
             <div class="form-group">
               <label for="regInitialDeposit">Initial Opening Deposit (₹):</label>
-              <input type="number" id="regInitialDeposit" class="form-input" min="500" step="500" value="25000" required>
+              <input type="number" id="regInitialDeposit" class="form-input" min="500" step="500" placeholder="Min. ₹500" value="5000" required>
             </div>
           </div>
 
@@ -1864,16 +1976,19 @@
           <div class="form-grid-2">
             <div class="form-group">
               <label for="regPin">Create 4-Digit PIN:</label>
-              <input type="password" id="regPin" class="form-input" maxlength="4" placeholder="4 digits" value="5566" required>
+              <input type="password" id="regPin" class="form-input" maxlength="4" placeholder="4 digits" required>
             </div>
             <div class="form-group">
               <label for="regConfirmPin">Confirm 4-Digit PIN:</label>
-              <input type="password" id="regConfirmPin" class="form-input" maxlength="4" placeholder="4 digits" value="5566" required>
+              <input type="password" id="regConfirmPin" class="form-input" maxlength="4" placeholder="4 digits" required>
             </div>
           </div>
 
           <div class="modal-form-actions">
             <button type="button" class="btn-cancel" id="cancelOpenAccountBtn">Cancel</button>
+            <button type="button" class="btn-reset-form" id="resetOpenAccountBtn" title="Reset all fields to fresh state">
+              <i class="fa-solid fa-rotate-left"></i> Reset Form
+            </button>
             <button type="submit" class="btn-submit"><i class="fa-solid fa-id-card"></i> Create Account & Issue Card</button>
           </div>
         </form>
@@ -2010,6 +2125,63 @@
           </button>
         </div>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================== -->
+  <!-- MODAL: BANK OFFICIAL SECURITY AUTHENTICATION PORTAL      -->
+  <!-- ======================================================== -->
+  <div class="modal-overlay" id="bankOfficialAuthModal">
+    <div class="modal-card official-auth-modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fa-solid fa-building-shield"></i>
+          <h3>Bank Official Security Portal</h3>
+        </div>
+        <button class="modal-close-btn" id="closeOfficialAuthModalBtn">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="auth-clearance-strip">
+          <div class="auth-shield-icon"><i class="fa-solid fa-user-shield"></i></div>
+          <div class="auth-strip-text">
+            <strong>Restricted Access • Bank Custodians & Officers</strong>
+            <span>Terminal NX-8840 Vault & Treasury Operations • Level-4 Clearance</span>
+          </div>
+        </div>
+
+        <p class="auth-instruction">
+          Please authenticate with your Bank Official Passcode or Master Security PIN to view vault cash reserves, cumulative deposits/withdrawals, cassette telemetry, and audit logs.
+        </p>
+
+        <form id="officialAuthForm" class="card-form">
+          <div class="form-group">
+            <label for="officialPasswordInput"><i class="fa-solid fa-key"></i> Bank Official Passcode / Security PIN:</label>
+            <div class="password-input-wrapper">
+              <input type="password" id="officialPasswordInput" class="form-input" placeholder="Enter official passcode (e.g. admin1234 or 9900)" required autocomplete="current-password">
+              <button type="button" class="btn-toggle-pwd" id="toggleOfficialPwdVisibilityBtn" title="Show / Hide Passcode">
+                <i class="fa-solid fa-eye" id="toggleOfficialPwdIcon"></i>
+              </button>
+            </div>
+            <div class="auth-demo-hint">
+              <i class="fa-solid fa-circle-info"></i> Official Credentials: <strong id="demoOfficialPwdHint">admin1234</strong> or <strong id="demoOfficialPinHint">9900</strong>
+            </div>
+          </div>
+
+          <div class="auth-quick-actions">
+            <button type="button" class="btn-biometric-bypass" id="quickOfficialBypassBtn" title="Instant Biometric Officer Verification">
+              <i class="fa-solid fa-fingerprint"></i> Quick Biometric Official Pass
+            </button>
+          </div>
+
+          <div class="modal-form-actions">
+            <button type="button" class="btn-cancel" id="cancelOfficialAuthBtn">Cancel</button>
+            <button type="submit" class="btn-submit" id="submitOfficialAuthBtn">
+              <i class="fa-solid fa-unlock-keyhole"></i> Authorize & Enter
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

@@ -1695,9 +1695,45 @@ function updateDashboardUI() {
     selector.appendChild(opt);
   });
 
-  // Account Balances
-  document.getElementById('dashCheckingBal').textContent = state.formatMoney(state.data.accounts.checking.balance);
-  document.getElementById('dashSavingsBal').textContent = state.formatMoney(state.data.accounts.savings.balance);
+  // Dynamic Account Balances (Supports checking, savings, student, wealth, etc.)
+  const accGrid = document.getElementById('accountsSummaryGrid');
+  if (accGrid) {
+    accGrid.innerHTML = '';
+    const accIcons = {
+      checking: 'fa-money-check-dollar',
+      savings: 'fa-piggy-bank',
+      student: 'fa-graduation-cap',
+      wealth: 'fa-gem'
+    };
+    const accBadges = {
+      checking: 'checking',
+      savings: 'savings',
+      student: 'student',
+      wealth: 'wealth'
+    };
+
+    Object.entries(state.data.accounts).forEach(([type, acc]) => {
+      const cardEl = document.createElement('div');
+      cardEl.className = 'acc-summary-card';
+      const icon = accIcons[type] || 'fa-wallet';
+      const badgeClass = accBadges[type] || 'checking';
+      const subInfo = type === 'savings' ? '4.85% APY • ' : (type === 'checking' ? '' : 'New • ');
+      cardEl.innerHTML = `
+        <div class="acc-badge ${badgeClass}"><i class="fa-solid ${icon}"></i> ${acc.name || type.toUpperCase()}</div>
+        <div class="acc-bal" id="dash_${type}_bal">${state.formatMoney(acc.balance)}</div>
+        <div class="acc-sub">${subInfo}Account ${acc.number}</div>
+      `;
+      accGrid.appendChild(cardEl);
+    });
+  }
+
+  // Backward compatibility for static ID queries
+  if (document.getElementById('dashCheckingBal') && state.data.accounts.checking) {
+    document.getElementById('dashCheckingBal').textContent = state.formatMoney(state.data.accounts.checking.balance);
+  }
+  if (document.getElementById('dashSavingsBal') && state.data.accounts.savings) {
+    document.getElementById('dashSavingsBal').textContent = state.formatMoney(state.data.accounts.savings.balance);
+  }
 
   // Daily Limit Progress
   const percent = Math.min(100, (state.data.withdrawnToday / state.data.dailyLimit) * 100);
@@ -1706,6 +1742,11 @@ function updateDashboardUI() {
 
   // Render Transaction History
   renderTransactionLedger('all');
+
+  // Update Profile & Bank Treasury Metrics
+  if (typeof profileController !== 'undefined') {
+    profileController.applyProfileUI();
+  }
 }
 
 function renderTransactionLedger(filter = 'all') {
@@ -1975,6 +2016,52 @@ class CameraKYCController {
     if (video) video.srcObject = null;
   }
 
+  reset() {
+    this.stopCamera();
+    this.capturedPhoto = null;
+    this.selectedPersona = 'cyber';
+
+    const previewLayer = document.getElementById('kycCapturedOverlay');
+    if (previewLayer) previewLayer.style.display = 'none';
+
+    const previewImg = document.getElementById('kycCapturedImg');
+    if (previewImg) previewImg.src = '';
+
+    const startBtn = document.getElementById('startKycCamBtn');
+    if (startBtn) startBtn.style.display = 'inline-flex';
+
+    const livenessBtn = document.getElementById('runLivenessCheckBtn');
+    if (livenessBtn) {
+      livenessBtn.style.display = 'none';
+      livenessBtn.disabled = false;
+    }
+
+    const captureBtn = document.getElementById('captureKycPhotoBtn');
+    if (captureBtn) {
+      captureBtn.style.display = 'none';
+      captureBtn.disabled = false;
+    }
+
+    const retakeBtn = document.getElementById('retakeKycPhotoBtn');
+    if (retakeBtn) retakeBtn.style.display = 'none';
+
+    const dot = document.getElementById('kycCamDot');
+    if (dot) dot.className = 'pulse-dot red';
+
+    const statusText = document.getElementById('kycStatusText');
+    if (statusText) statusText.textContent = 'Webcam Ready • Click Start';
+
+    const livenessPrompt = document.getElementById('kycLivenessPromptOverlay');
+    if (livenessPrompt) livenessPrompt.style.display = 'none';
+
+    const countdownEl = document.getElementById('kycCountdown');
+    if (countdownEl) countdownEl.style.display = 'none';
+
+    document.querySelectorAll('.avatar-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.getAttribute('data-avatar') === 'cyber');
+    });
+  }
+
   getFinalPhoto() {
     if (this.capturedPhoto) return this.capturedPhoto;
     return DEMO_AVATARS[this.selectedPersona] || DEMO_AVATARS.cyber;
@@ -2094,8 +2181,8 @@ function openNewAccountModal() {
 }
 
 function updateRegCardPreview() {
-  const fullName = document.getElementById('regFullName')?.value.trim().toUpperCase() || 'ALEX MERCER';
-  const selectedPrefOption = document.querySelector('.pref-card-option.active');
+  const fullName = document.getElementById('regFullName')?.value.trim().toUpperCase() || 'NEW CARDHOLDER';
+  const selectedPrefOption = document.querySelector('.pref-card-option.active') || document.querySelector('.pref-card-option');
   
   if (!selectedPrefOption) return;
 
@@ -2137,6 +2224,49 @@ function updateRegCardPreview() {
   if (regBioPlaceholder) {
     regBioPlaceholder.style.display = 'none';
   }
+}
+
+/**
+ * Resets the Open Account Registration Dashboard / Wizard to clean, fresh state
+ */
+function resetOpenAccountDashboard() {
+  // 1. Reset standard form fields
+  const form = document.getElementById('openAccountForm');
+  if (form) form.reset();
+
+  const fullNameInput = document.getElementById('regFullName');
+  if (fullNameInput) fullNameInput.value = '';
+
+  const phoneInput = document.getElementById('regPhone');
+  if (phoneInput) phoneInput.value = '';
+
+  const accountTypeSelect = document.getElementById('regAccountType');
+  if (accountTypeSelect) accountTypeSelect.value = 'checking';
+
+  const depositInput = document.getElementById('regInitialDeposit');
+  if (depositInput) depositInput.value = '5000';
+
+  const pinInput = document.getElementById('regPin');
+  if (pinInput) pinInput.value = '';
+
+  const confirmPinInput = document.getElementById('regConfirmPin');
+  if (confirmPinInput) confirmPinInput.value = '';
+
+  // 2. Reset banking lifestyle preference cards (default to first option)
+  document.querySelectorAll('.pref-card-option').forEach((cardOpt, idx) => {
+    const isFirst = idx === 0;
+    cardOpt.classList.toggle('active', isFirst);
+    const radio = cardOpt.querySelector('input[type="radio"]');
+    if (radio) radio.checked = isFirst;
+  });
+
+  // 3. Reset live Camera KYC module & persona state
+  if (kycController) {
+    kycController.reset();
+  }
+
+  // 4. Update preview card to fresh default state
+  updateRegCardPreview();
 }
 
 function handleOpenAccountSubmit(e) {
@@ -2229,8 +2359,13 @@ function handleOpenAccountSubmit(e) {
   state.saveState();
   updateDashboardUI();
 
-  // Stop camera stream if open
-  if (kycController) kycController.stopCamera();
+  // If an ATM session was active with an old card, eject and reset to welcome screen
+  if (atm.isCardInserted) {
+    atm.ejectCard('New account activated. Please insert your new card.');
+  }
+
+  // 5. Automatically reset the Open Account Dashboard form, preview, and camera
+  resetOpenAccountDashboard();
 
   // Close modal
   document.getElementById('openAccountModal')?.classList.remove('active');
@@ -2240,6 +2375,193 @@ function handleOpenAccountSubmit(e) {
   showToast(`Account successfully registered! Issued ${tierTitle} card with Biometric KYC to ${fullName}.`, 'success');
   audio.speak(`Welcome to Nexus Bank, ${fullName}. Your account is open and your biometric debit card is ready for ATM use.`);
 }
+
+
+// =============================================================================
+// DUAL PROFILE CONTROLLER: CUSTOMER (USER) VS PASSWORD-PROTECTED BANK OFFICIAL
+// =============================================================================
+class ProfileController {
+  constructor() {
+    this.currentProfile = localStorage.getItem('nexus_atm_profile') || 'user';
+    this.officialPasscodes = ['admin1234', 'nexus@admin', '9900', '1234', 'admin'];
+    this.failedAttempts = 0;
+  }
+
+  isOfficial() {
+    return this.currentProfile === 'official';
+  }
+
+  setProfile(profile) {
+    this.currentProfile = profile;
+    localStorage.setItem('nexus_atm_profile', profile);
+    this.applyProfileUI();
+  }
+
+  openAuthModal() {
+    const modal = document.getElementById('bankOfficialAuthModal');
+    const pwdInput = document.getElementById('officialPasswordInput');
+    if (pwdInput) {
+      pwdInput.value = '';
+      pwdInput.type = 'password';
+    }
+    const icon = document.getElementById('toggleOfficialPwdIcon');
+    if (icon) icon.className = 'fa-solid fa-eye';
+    if (modal) modal.classList.add('active');
+    setTimeout(() => pwdInput?.focus(), 100);
+    audio.playKeypadBeep(1200);
+  }
+
+  closeAuthModal() {
+    const modal = document.getElementById('bankOfficialAuthModal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  authenticate(passcode) {
+    if (!passcode) {
+      showToast('Please enter Bank Official passcode.', 'error');
+      audio.playErrorTone();
+      return false;
+    }
+    const clean = passcode.trim();
+    if (this.officialPasscodes.includes(clean)) {
+      this.failedAttempts = 0;
+      this.setProfile('official');
+      this.closeAuthModal();
+      audio.playBiometricSuccessSound();
+      showToast('Bank Official Profile Activated: Access granted to bank reserves & telemetry.', 'success');
+      audio.speak('Bank Official access authorized. Sensitive bank records unlocked.');
+      return true;
+    } else {
+      this.failedAttempts++;
+      audio.playErrorTone();
+      showToast('Authentication failed: Invalid Bank Official passcode.', 'error');
+      return false;
+    }
+  }
+
+  lockToUser() {
+    this.setProfile('user');
+    audio.playEnterTone();
+    showToast('Switched to Customer Profile. Bank sensitive records locked.', 'info');
+    audio.speak('Switched to Customer Profile. Sensitive records locked.');
+  }
+
+  calculateMetrics() {
+    let totalDeposits = 0;
+    let depositCount = 0;
+    let totalWithdrawals = 0;
+    let withdrawCount = 0;
+
+    (state.data.transactions || []).forEach(tx => {
+      if (tx.type === 'deposit') {
+        totalDeposits += (parseFloat(tx.amount) || 0);
+        depositCount++;
+      } else if (tx.type === 'withdrawal') {
+        totalWithdrawals += (parseFloat(tx.amount) || 0);
+        withdrawCount++;
+      }
+    });
+
+    const c = state.data.cassettes || { 500: 0, 200: 0, 100: 0, 50: 0 };
+    const vaultTotal = (c[500] * 500) + (c[200] * 200) + (c[100] * 100) + (c[50] * 50);
+    const netCashFlow = totalDeposits - totalWithdrawals;
+
+    return {
+      totalDeposits,
+      depositCount,
+      totalWithdrawals,
+      withdrawCount,
+      vaultTotal,
+      netCashFlow
+    };
+  }
+
+  applyProfileUI() {
+    const isOff = this.isOfficial();
+
+    // Toggle button active states
+    document.getElementById('profileUserBtn')?.classList.toggle('active', !isOff);
+    document.getElementById('profileOfficialBtn')?.classList.toggle('active', isOff);
+
+    // Official active indicator in nav
+    const indicator = document.getElementById('officialActiveIndicator');
+    if (indicator) indicator.style.display = isOff ? 'inline-flex' : 'none';
+
+    const pillToggle = document.getElementById('profilePillToggle');
+    if (pillToggle) pillToggle.style.display = isOff ? 'none' : 'inline-flex';
+
+    // Top status pill badge
+    const statusDiagTag = document.getElementById('statusDiagTag');
+    if (statusDiagTag) {
+      if (isOff) {
+        statusDiagTag.innerHTML = '<i class="fa-solid fa-server"></i> Vault Diag';
+        statusDiagTag.style.opacity = '1';
+        statusDiagTag.style.color = 'var(--accent-green)';
+      } else {
+        statusDiagTag.innerHTML = '<i class="fa-solid fa-lock"></i> Vault Locked';
+        statusDiagTag.style.opacity = '0.7';
+        statusDiagTag.style.color = 'var(--text-muted)';
+      }
+    }
+
+    // Official Treasury Panel
+    const treasuryPanel = document.getElementById('officialTreasuryPanel');
+    if (treasuryPanel) treasuryPanel.style.display = isOff ? 'block' : 'none';
+
+    // Update treasury values if in Official mode
+    if (isOff) {
+      const m = this.calculateMetrics();
+      const vaultEl = document.getElementById('treasuryVaultLiquidity');
+      if (vaultEl) vaultEl.textContent = state.formatMoney(m.vaultTotal);
+
+      const depEl = document.getElementById('treasuryTotalDeposits');
+      if (depEl) depEl.textContent = state.formatMoney(m.totalDeposits);
+      const depCountEl = document.getElementById('treasuryDepositCount');
+      if (depCountEl) depCountEl.textContent = `${m.depositCount} Deposits Processed`;
+
+      const withEl = document.getElementById('treasuryTotalWithdrawals');
+      if (withEl) withEl.textContent = state.formatMoney(m.totalWithdrawals);
+      const withCountEl = document.getElementById('treasuryWithdrawCount');
+      if (withCountEl) withCountEl.textContent = `${m.withdrawCount} Dispenses Completed`;
+
+      const netEl = document.getElementById('treasuryNetCashFlow');
+      if (netEl) {
+        const sign = m.netCashFlow >= 0 ? '+' : '-';
+        netEl.textContent = `${sign}${state.formatMoney(Math.abs(m.netCashFlow))}`;
+        netEl.style.color = m.netCashFlow >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+      }
+      const flowStatusEl = document.getElementById('treasuryFlowStatus');
+      if (flowStatusEl) {
+        flowStatusEl.textContent = m.netCashFlow >= 0 ? 'Net Cash Influx' : 'Net Cash Outflow';
+      }
+    }
+
+    // Bank Audit Ledger vs Locked Shield
+    const lockedBanner = document.getElementById('userLedgerLockedBanner');
+    const historyListWrapper = document.getElementById('historyListWrapper');
+    const historyFilterBtns = document.getElementById('historyFilterBtns');
+    const ledgerBoxTitle = document.getElementById('ledgerBoxTitle');
+
+    if (lockedBanner) lockedBanner.style.display = isOff ? 'none' : 'flex';
+    if (historyListWrapper) historyListWrapper.style.display = isOff ? 'flex' : 'none';
+    if (historyFilterBtns) historyFilterBtns.style.display = isOff ? 'flex' : 'none';
+    if (ledgerBoxTitle) {
+      ledgerBoxTitle.innerHTML = isOff
+        ? '<i class="fa-solid fa-receipt"></i> Bank Master Audit Ledger'
+        : '<i class="fa-solid fa-shield-halved"></i> Bank Transaction History';
+    }
+
+    // Reset Demo Button (Bank Officials only)
+    const resetDemoBtn = document.getElementById('resetDemoStateBtn');
+    if (resetDemoBtn) resetDemoBtn.style.display = isOff ? 'inline-flex' : 'none';
+
+    // Customer Security Guide (Shown in User profile, hidden in Official profile)
+    const guideBox = document.getElementById('customerSecurityGuideBox');
+    if (guideBox) guideBox.style.display = isOff ? 'none' : 'block';
+  }
+}
+
+const profileController = new ProfileController();
 
 
 // =============================================================================
@@ -2484,8 +2806,13 @@ function initEventListeners() {
     showToast('Active wallet card updated.', 'success');
   });
 
-  // Reset Demo State
+  // Reset Demo State (Guarded for Bank Officials Only)
   document.getElementById('resetDemoStateBtn')?.addEventListener('click', () => {
+    if (!profileController.isOfficial()) {
+      showToast('Restricted: Bank Official authentication required to reset system state.', 'error');
+      profileController.openAuthModal();
+      return;
+    }
     if (confirm('Are you sure you want to reset all account balances, cards, and transaction records to original demo state?')) {
       state.resetState();
       updateDashboardUI();
@@ -2601,14 +2928,28 @@ function initEventListeners() {
   document.getElementById('activateCardForm')?.addEventListener('submit', handleActivateCardSubmit);
 
   // Open New Account Registration Portal Controls (Bottom Left Corner + Welcome Screen)
-  document.getElementById('openAccountCornerBtn')?.addEventListener('click', openNewAccountModal);
-  document.getElementById('quickOpenAccountBtn')?.addEventListener('click', openNewAccountModal);
+  document.getElementById('openAccountCornerBtn')?.addEventListener('click', () => {
+    openNewAccountModal();
+  });
+  document.getElementById('quickOpenAccountBtn')?.addEventListener('click', () => {
+    openNewAccountModal();
+  });
   document.getElementById('closeOpenAccountModalBtn')?.addEventListener('click', () => {
     document.getElementById('openAccountModal').classList.remove('active');
+    resetOpenAccountDashboard();
   });
   document.getElementById('cancelOpenAccountBtn')?.addEventListener('click', () => {
     document.getElementById('openAccountModal').classList.remove('active');
+    resetOpenAccountDashboard();
   });
+
+  // Dedicated Reset Button for Open Account Dashboard
+  document.getElementById('resetOpenAccountBtn')?.addEventListener('click', () => {
+    resetOpenAccountDashboard();
+    audio.playKeypadBeep(700);
+    showToast('Open Account registration dashboard reset to fresh defaults.', 'info');
+  });
+
   document.getElementById('regFullName')?.addEventListener('input', updateRegCardPreview);
 
   // Preference Card Option Selection
@@ -2706,9 +3047,18 @@ function initEventListeners() {
   document.getElementById('simPhonePeBtn')?.addEventListener('click', () => atm.simulateAppPay('PhonePe UPI'));
   document.getElementById('simPaytmBtn')?.addEventListener('click', () => atm.simulateAppPay('BHIM / Paytm UPI'));
 
-  // 4. ATM Hardware Diagnostics & Cassette Vault Controls
-  document.getElementById('atmStatusPill')?.addEventListener('click', openDiagnosticsModal);
-  document.getElementById('navDiagnosticsBtn')?.addEventListener('click', openDiagnosticsModal);
+  // 4. ATM Hardware Diagnostics & Cassette Vault Controls (Intercepted for Bank Officials)
+  const handleDiagnosticsAccess = () => {
+    if (profileController.isOfficial()) {
+      openDiagnosticsModal();
+    } else {
+      showToast('Restricted: Bank Official authorization required to access Vault & Hardware Diagnostics.', 'info');
+      profileController.openAuthModal();
+    }
+  };
+
+  document.getElementById('atmStatusPill')?.addEventListener('click', handleDiagnosticsAccess);
+  document.getElementById('navDiagnosticsBtn')?.addEventListener('click', handleDiagnosticsAccess);
   document.getElementById('closeDiagnosticsModalBtn')?.addEventListener('click', () => {
     document.getElementById('atmDiagnosticsModal')?.classList.remove('active');
   });
@@ -2716,11 +3066,66 @@ function initEventListeners() {
   document.getElementById('refillPaperBtn')?.addEventListener('click', replacePaperRoll);
   document.getElementById('testDispenserMotorBtn')?.addEventListener('click', testDispenserMotor);
 
-  // Technician shortcut: Ctrl+Alt+D
+  // 5. Two Profiles Switcher & Bank Official Auth Event Listeners
+  document.getElementById('profileUserBtn')?.addEventListener('click', () => {
+    profileController.lockToUser();
+  });
+
+  document.getElementById('profileOfficialBtn')?.addEventListener('click', () => {
+    if (profileController.isOfficial()) {
+      showToast('Bank Official Profile already active.', 'info');
+    } else {
+      profileController.openAuthModal();
+    }
+  });
+
+  document.getElementById('btnLockOfficial')?.addEventListener('click', () => {
+    profileController.lockToUser();
+  });
+
+  document.getElementById('promptOfficialFromLedgerBtn')?.addEventListener('click', () => {
+    profileController.openAuthModal();
+  });
+
+  // Bank Official Authentication Modal Controls
+  document.getElementById('officialAuthForm')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const pwd = document.getElementById('officialPasswordInput')?.value;
+    profileController.authenticate(pwd);
+  });
+
+  document.getElementById('cancelOfficialAuthBtn')?.addEventListener('click', () => {
+    profileController.closeAuthModal();
+  });
+
+  document.getElementById('closeOfficialAuthModalBtn')?.addEventListener('click', () => {
+    profileController.closeAuthModal();
+  });
+
+  document.getElementById('toggleOfficialPwdVisibilityBtn')?.addEventListener('click', () => {
+    const input = document.getElementById('officialPasswordInput');
+    const icon = document.getElementById('toggleOfficialPwdIcon');
+    if (!input || !icon) return;
+    if (input.type === 'password') {
+      input.type = 'text';
+      icon.className = 'fa-solid fa-eye-slash';
+    } else {
+      input.type = 'password';
+      icon.className = 'fa-solid fa-eye';
+    }
+  });
+
+  document.getElementById('quickOfficialBypassBtn')?.addEventListener('click', () => {
+    const input = document.getElementById('officialPasswordInput');
+    if (input) input.value = 'admin1234';
+    profileController.authenticate('admin1234');
+  });
+
+  // Technician shortcut: Ctrl+Alt+D (Prompts auth if not official)
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.altKey && (e.key === 'd' || e.key === 'D')) {
       e.preventDefault();
-      openDiagnosticsModal();
+      handleDiagnosticsAccess();
     }
   });
 }
@@ -3000,4 +3405,5 @@ document.addEventListener('DOMContentLoaded', () => {
   updateDashboardUI();
   updateDiagnosticsUI();
   initEventListeners();
+  profileController.applyProfileUI();
 });

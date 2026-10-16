@@ -332,6 +332,12 @@ On screens under 860px, `.view-switch-tabs` appears in the navigation bar. The f
 ```
 
 - When viewing the Dashboard, the **"Exit to ATM"** button (`#exitDashboardBtn`) in the card box header allows one-touch return to the ATM Kiosk, smoothly updating active tab states and scrolling the terminal into view.
+- **Open Account Dashboard Auto-Reset**: Upon submitting and issuing a new debit card in the Open Account registration portal (`handleOpenAccountSubmit`), the entire modal dashboard automatically resets via `resetOpenAccountDashboard()`:
+  - Form fields (`#regFullName`, `#regPhone`, `#regPin`, `#regConfirmPin`) are cleanly cleared.
+  - The live Camera KYC module and biometric avatar preview reset to default (`CameraKYCController.reset()`).
+  - Banking lifestyle preference selection returns to Obsidian Platinum.
+  - The dynamic card preview updates back to `'NEW CARDHOLDER'` with default tier styling.
+  - A dedicated **"Reset Form"** button (`#resetOpenAccountBtn`) is also available for manual one-click resets anytime.
 
 ---
 
@@ -345,3 +351,32 @@ On screens under 860px, `.view-switch-tabs` appears in the navigation bar. The f
 | **Deposit Processing** | [`app.js`](file:///e:/micro%20project/app.js) | `confirmDeposit()`, `simulateChequeOcr()` | Physical bill denomination counting, cheque laser OCR and MICR band decoding. |
 | **Audio Synthesis** | [`app.js`](file:///e:/micro%20project/app.js) | `AudioEngine`, `playKeypadBeep()`, `playCashMotorSound()` | Pure Web Audio API tone synthesis, motor drone, bill flutter clicks, zero MP3 assets. |
 | **Responsive UI** | [`index.html`](file:///e:/micro%20project/index.html), [`style.css`](file:///e:/micro%20project/style.css) | `.atm-kiosk-section`, `.digital-companion-section`, `.view-tab-btn` | Photorealistic 3D kiosk chassis, tactile keys, 3D flipping EMV card, mobile tabbed view toggling. |
+| **Dual Profiles & RBAC** | [`app.js`](file:///e:/micro%20project/app.js), [`index.html`](file:///e:/micro%20project/index.html) | `ProfileController`, `calculateMetrics()`, `applyProfileUI()` | Customer Profile vs Password-Protected Bank Official Profile for sensitive cash flow & audit ledger privacy. |
+
+---
+
+## 7. Dual Profile & Role-Based Access Control (RBAC) System
+
+To protect sensitive institutional banking telemetry and customer privacy, the system implements a strict dual-profile security architecture:
+
+### 1. Customer Profile (Default / User Mode)
+- **Target Audience**: Everyday ATM patrons, cardholders, and general users.
+- **Privacy Enforcement**:
+  - **Confidential Treasury Panel Hidden**: Vault reserve liquidity, cumulative deposits, cumulative withdrawals, and terminal net cash flow are inaccessible.
+  - **Master Audit Ledger Shielded**: The raw historical transactions ledger is veiled behind a security shield card (`#userLedgerLockedBanner`), preventing unauthorized patrons from viewing third-party account activity or banking volumes.
+  - **Kiosk Hardware Diagnostics Restricted**: Attempting to view vault cassette levels or motor diagnostics (`#navDiagnosticsBtn`, `#atmStatusPill`, or `Ctrl+Alt+D`) triggers the Bank Official authentication challenge.
+  - **Customer Security & Helpline Displayed**: Presents an ATM Safety Guide with PIN-shielding reminders and 24/7 hotline details (`#customerSecurityGuideBox`).
+
+### 2. Bank Official Profile (Staff Mode)
+- **Target Audience**: Branch managers, cash-in-transit (CIT) custodians, and security auditors.
+- **Security & Passcode Authentication**:
+  - Protected by a dedicated security portal modal (`#bankOfficialAuthModal`) with a password challenge.
+  - **Accepted Official Passcodes**: `admin1234`, `9900`, `nexus@admin`, `1234`.
+  - Includes a biometric quick-pass bypass button for rapid evaluation.
+- **Official Capabilities Unlocked**:
+  - **Live Treasury Telemetry Panel (`#officialTreasuryPanel`)**: Displays real-time Total Vault Reserves, Cumulative Bank Deposits, Cumulative Bank Withdrawals, and Terminal Net Cash Flow with transaction counts.
+  - **Master Bank Audit Ledger**: Unlocks unredacted transaction logs with multi-type filters (All, Withdrawal, Deposit, Transfer) and CSV ledger export.
+  - **ATM Hardware & Cassette Vault Diagnostics**: Direct access to note cassette levels (₹500, ₹200, ₹100, ₹50), thermal paper roll status, dispenser test routines, and cassette refills.
+  - **State Reset Privileges**: Access to terminal demo state reset (`#resetDemoStateBtn`).
+  - **One-Touch Lockout**: Bank staff can instantly re-lock the system back to Customer Profile via `#btnLockOfficial` or `#profileUserBtn`.
+
