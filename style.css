@@ -6174,4 +6174,354 @@ input:checked + .slider::before {
   }
 }
 
+/* ==========================================================================
+   MILESTONE 3: SECURITY INTEGRATION & ENHANCEMENTS STYLES
+   ========================================================================== */
+
+/* CVV Box & Mini Countdown on Card Back */
+.cvv-box-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cvv-mini-badge {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid var(--accent-green);
+  color: var(--accent-green);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-sm);
+  animation: cvvBadgePulse 1s ease-in-out infinite;
+}
+
+@keyframes cvvBadgePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.96); }
+}
+
+.badge-demo-cvv {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: var(--accent-gold);
+  margin-bottom: 0.25rem;
+}
+
+/* Simulated CVV Generator Panel */
+.cvv-generator-panel {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: border-color var(--transition-fast);
+}
+
+.cvv-generator-panel:hover {
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+.cvv-generator-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cvv-gen-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.cvv-gen-title i {
+  color: var(--accent-cyan);
+}
+
+.cvv-state-pill {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-full);
+  letter-spacing: 0.5px;
+}
+
+.cvv-state-pill.masked {
+  background: rgba(100, 116, 139, 0.2);
+  color: var(--text-secondary);
+  border: 1px solid rgba(100, 116, 139, 0.4);
+}
+
+.cvv-state-pill.active {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--accent-green);
+  border: 1px solid var(--accent-green);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+}
+
+.cvv-gen-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+  margin: 0;
+}
+
+.cvv-gen-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.btn-generate-cvv {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(59, 130, 246, 0.15));
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  color: var(--accent-cyan);
+  font-family: var(--font-main);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.55rem 0.85rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all var(--transition-fast);
+}
+
+.btn-generate-cvv:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  color: #020617;
+  box-shadow: 0 0 12px var(--accent-cyan-glow);
+  transform: translateY(-1px);
+}
+
+.btn-generate-cvv:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cvv-timer-display {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--accent-green);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius-sm);
+}
+
+/* Card Freeze Status Indicator */
+.toggle-info-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.card-freeze-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  width: fit-content;
+}
+
+.card-freeze-status-badge.active {
+  color: var(--accent-green);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.card-freeze-status-badge.frozen {
+  color: var(--accent-red);
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
+}
+
+/* Inactivity Warning Modal Styles */
+.inactivity-warning-card {
+  max-width: 480px;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.85), 0 0 25px rgba(245, 158, 11, 0.2);
+}
+
+.warning-header {
+  border-bottom: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.warning-header .modal-title {
+  color: var(--accent-gold);
+}
+
+.inactivity-warning-text {
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 1.25rem;
+}
+
+.inactivity-countdown-box {
+  display: flex;
+  justify-content: center;
+  margin: 1.5rem 0;
+}
+
+.inactivity-circle-pulse {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  border: 3px solid var(--accent-gold);
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.15) 0%, rgba(15, 23, 42, 0.9) 70%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+  animation: warningCirclePulse 1.5s ease-in-out infinite;
+}
+
+@keyframes warningCirclePulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 25px rgba(245, 158, 11, 0.5);
+  }
+}
+
+.countdown-val {
+  font-family: var(--font-display);
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: var(--accent-gold);
+  line-height: 1;
+}
+
+.countdown-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+  margin-top: 0.25rem;
+}
+
+.inactivity-sub-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.inactivity-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.inactivity-actions button {
+  flex: 1;
+}
+
+/* CVV Auth Modal */
+.cvv-auth-card {
+  max-width: 440px;
+}
+
+.cvv-auth-desc {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 1.25rem;
+}
+
+.cvv-pin-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.cvv-pin-field-group label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cvv-pin-input {
+  background: rgba(3, 7, 18, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 8px;
+  text-align: center;
+  color: var(--accent-cyan);
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.cvv-pin-input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+}
+
+.cvv-pin-error {
+  color: var(--accent-red);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cvv-disclaimer-box {
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.85rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.cvv-disclaimer-box i {
+  color: var(--accent-cyan);
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .cvv-mini-badge,
+  .inactivity-circle-pulse {
+    animation: none !important;
+  }
+}
+
+
 

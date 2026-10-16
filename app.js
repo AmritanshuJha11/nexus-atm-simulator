@@ -357,6 +357,17 @@ const DEFAULT_STATE = {
   ]
 };
 
+// Accessibility Announcement Helper (Milestone 3)
+function announceA11y(message, politeness = 'polite') {
+  const el = document.getElementById('globalA11yAnnouncer');
+  if (!el) return;
+  el.setAttribute('aria-live', politeness);
+  el.textContent = '';
+  setTimeout(() => {
+    el.textContent = message;
+  }, 40);
+}
+
 class StateManager {
   constructor() {
     this.data = this.loadState();
@@ -373,6 +384,43 @@ class StateManager {
         if (typeof parsed.paperRoll === 'undefined') {
           parsed.paperRoll = 88;
         }
+
+        // Backward compatibility: ensure accounts exist
+        if (!parsed.accounts || !parsed.accounts.checking) {
+          parsed.accounts = JSON.parse(JSON.stringify(DEFAULT_STATE.accounts));
+        }
+
+        // Backward compatibility: ensure cards array and card.frozen boolean
+        if (Array.isArray(parsed.cards)) {
+          parsed.cards.forEach(c => {
+            c.frozen = !!c.frozen;
+            // Never load transient CVV into persistent state
+            delete c.transientCvv;
+            delete c.tempCvv;
+          });
+        } else {
+          parsed.cards = JSON.parse(JSON.stringify(DEFAULT_STATE.cards));
+        }
+
+        if (!parsed.activeCardId && parsed.cards.length > 0) {
+          parsed.activeCardId = parsed.cards[0].id;
+        }
+
+        if (typeof parsed.dailyLimit === 'undefined') {
+          parsed.dailyLimit = DEFAULT_STATE.dailyLimit || 50000;
+        }
+        if (typeof parsed.withdrawnToday === 'undefined') {
+          parsed.withdrawnToday = 0;
+        }
+        if (!Array.isArray(parsed.transactions)) {
+          parsed.transactions = [];
+        }
+
+        // Remove any leaked transient variables
+        delete parsed.transientCvv;
+        delete parsed.tempCvv;
+        delete parsed.inactivityTimer;
+
         return parsed;
       }
     } catch (e) {
@@ -383,7 +431,19 @@ class StateManager {
 
   saveState() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.data));
+      // Ensure transient CVVs, timers, or sensitive tokens are NEVER written to persistent storage
+      const clone = JSON.parse(JSON.stringify(this.data));
+      if (Array.isArray(clone.cards)) {
+        clone.cards.forEach(c => {
+          delete c.transientCvv;
+          delete c.tempCvv;
+        });
+      }
+      delete clone.transientCvv;
+      delete clone.tempCvv;
+      delete clone.inactivityTimer;
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(clone));
     } catch (e) {
       console.warn('Failed to save state:', e);
     }
@@ -431,6 +491,8 @@ class AtmController {
     this.currentScreen = 'screenWelcome';
     this.isCardInserted = false;
     this.isAuthenticated = false;
+    this.sessionCardId = null;
+    this.sessionAuthToken = 0;
     this.pinBuffer = '';
     this.pinRetriesLeft = 3;
     this.withdrawInput = '';
@@ -438,8 +500,15 @@ class AtmController {
     this.selectedDepositType = 'cash';
     this.depositCounts = { 500: 0, 200: 0, 100: 0, 50: 0 };
     this.lastReceiptData = null;
-    this.autoEjectTimer = null;
-    this.countdownInterval = null;
+
+    // Milestone 3: Inactivity Timer Engine (45s warning, 60s timeout)
+    this.lastActivityTime = null;
+    this.inactivityWarningTimer = null;
+    this.inactivityTimeoutTimer = null;
+    this.warningCountdownInterval = null;
+    this.isWarningShown = false;
+    this.ejectScreenTimeout = null;
+    this.faceAuthTimeout = null;
 
     this.initClock();
   }
@@ -454,6 +523,209 @@ class AtmController {
     };
     setInterval(updateTime, 1000);
     updateTime();
+  }
+
+  // ===========================================================================
+  // CENTRALIZED CARD AUTHORIZATION ENGINE (MILESTONE 3)
+  // ===========================================================================
+  authorizeCardTransaction(operationName, requiredAmount = 0, accountKey = null) {
+    // 1. Session check: user must be authenticated
+    if (!this.isAuthenticated) {
+      return {
+        authorized: false,
+        code: 'UNAUTHENTICATED',
+        reason: 'Transaction declined. Please insert your card and authenticate with PIN or Face-ID.'
+      };
+    }
+
+    // 2. Identify the authoritative card associated with this active session
+    let card = null;
+    if (this.isCardInserted) {
+      const cardId = this.sessionCardId || state.data.activeCardId;
+      card = state.data.cards.find(c => c.id === cardId);
+      if (!card) {
+        return {
+          authorized: false,
+          code: 'INVALID_CARD',
+          reason: 'Transaction declined. Card associated with this session is invalid.'
+        };
+      }
+
+      // Authoritative Card-Freeze check:
+      // If card is frozen, immediately terminate ATM session and prevent financial mutation
+      if (card.frozen) {
+        this.ejectCard('Transaction declined. This card is frozen. Unfreeze the card and authenticate again to continue.');
+        return {
+          authorized: false,
+          code: 'CARD_FROZEN',
+          reason: 'Transaction declined. This card is frozen. Unfreeze the card and authenticate again to continue.'
+        };
+      }
+    } else {
+      // Cardless session uses active account card for receipt/meta reference
+      card = state.getActiveCard();
+    }
+
+    // 3. Precondition validation without mutating financial state
+    if (requiredAmount > 0) {
+      // Limit check for withdrawals/fast-cash
+      if (operationName === 'withdrawal' || operationName === 'fastcash') {
+        const remainingLimit = state.data.dailyLimit - state.data.withdrawnToday;
+        if (requiredAmount > remainingLimit) {
+          return {
+            authorized: false,
+            code: 'LIMIT_EXCEEDED',
+            reason: `Daily ATM limit exceeded! Remaining limit: ${state.formatMoney(remainingLimit)}`
+          };
+        }
+      }
+
+      // Account balance check
+      if (accountKey) {
+        const account = state.getAccount(accountKey);
+        if (!account || account.balance < requiredAmount) {
+          return {
+            authorized: false,
+            code: 'INSUFFICIENT_FUNDS',
+            reason: `Insufficient funds in ${account ? account.name : 'account'}! Available: ${state.formatMoney(account ? account.balance : 0)}`
+          };
+        }
+      }
+    }
+
+    return {
+      authorized: true,
+      card: card,
+      accountKey: accountKey,
+      account: accountKey ? state.getAccount(accountKey) : null,
+      amount: requiredAmount
+    };
+  }
+
+  // ===========================================================================
+  // INACTIVITY TIMEOUT & SESSION CLEANUP (MILESTONE 3: 45s Warning / 60s Timeout)
+  // ===========================================================================
+  recordUserActivity() {
+    if (!this.isCardInserted && !this.isAuthenticated) return;
+    this.lastActivityTime = Date.now();
+    if (this.isWarningShown) {
+      this.hideInactivityWarning();
+    }
+    this.scheduleInactivityTimers();
+  }
+
+  scheduleInactivityTimers() {
+    this.clearInactivityTimers();
+
+    // Active session monitoring (idle only during card-in-slot or authenticated session)
+    if ((this.isCardInserted || this.isAuthenticated) && 
+        this.currentScreen !== 'screenSuccess' && 
+        this.currentScreen !== 'screenWelcome' && 
+        this.currentScreen !== 'screenCardEjected') {
+      
+      const now = Date.now();
+      if (!this.lastActivityTime) this.lastActivityTime = now;
+      const elapsed = now - this.lastActivityTime;
+
+      const timeToWarning = Math.max(0, 45000 - elapsed);
+      const timeToTimeout = Math.max(0, 60000 - elapsed);
+
+      // Warning at 45 seconds of inactivity
+      this.inactivityWarningTimer = setTimeout(() => {
+        const actualElapsed = Date.now() - this.lastActivityTime;
+        if (actualElapsed >= 45000 && !this.isWarningShown && (this.isCardInserted || this.isAuthenticated)) {
+          this.showInactivityWarning();
+        }
+      }, timeToWarning);
+
+      // Timeout at 60 seconds of inactivity
+      this.inactivityTimeoutTimer = setTimeout(() => {
+        const actualElapsed = Date.now() - this.lastActivityTime;
+        if (actualElapsed >= 60000 && (this.isCardInserted || this.isAuthenticated)) {
+          this.handleSessionTimeout();
+        } else {
+          // Re-evaluate if timer fired slightly early due to browser task batching
+          this.scheduleInactivityTimers();
+        }
+      }, timeToTimeout);
+    }
+  }
+
+  showInactivityWarning() {
+    this.isWarningShown = true;
+    const modal = document.getElementById('inactivityWarningModal');
+    if (modal) modal.classList.add('active');
+
+    const updateCountdown = () => {
+      const remainingMs = 60000 - (Date.now() - this.lastActivityTime);
+      const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
+      const countEl = document.getElementById('inactivityCountdownSec');
+      if (countEl) countEl.textContent = remainingSec;
+
+      if (remainingSec === 5) {
+        announceA11y('ATM session expiring in 5 seconds due to inactivity.');
+      }
+
+      if (remainingSec <= 0) {
+        this.handleSessionTimeout();
+      }
+    };
+
+    updateCountdown();
+    announceA11y('ATM session inactivity warning. 15 seconds remaining. Press any key to continue.');
+    audio.playErrorTone();
+
+    if (this.warningCountdownInterval) clearInterval(this.warningCountdownInterval);
+    this.warningCountdownInterval = setInterval(updateCountdown, 1000);
+  }
+
+  hideInactivityWarning() {
+    this.isWarningShown = false;
+    const modal = document.getElementById('inactivityWarningModal');
+    if (modal) modal.classList.remove('active');
+    if (this.warningCountdownInterval) {
+      clearInterval(this.warningCountdownInterval);
+      this.warningCountdownInterval = null;
+    }
+  }
+
+  clearInactivityTimers() {
+    if (this.inactivityWarningTimer) {
+      clearTimeout(this.inactivityWarningTimer);
+      this.inactivityWarningTimer = null;
+    }
+    if (this.inactivityTimeoutTimer) {
+      clearTimeout(this.inactivityTimeoutTimer);
+      this.inactivityTimeoutTimer = null;
+    }
+    if (this.warningCountdownInterval) {
+      clearInterval(this.warningCountdownInterval);
+      this.warningCountdownInterval = null;
+    }
+    this.hideInactivityWarning();
+  }
+
+  resetInactivityTimer() {
+    this.recordUserActivity();
+  }
+
+  handleSessionTimeout() {
+    this.hideInactivityWarning();
+    this.sessionAuthToken++;
+    
+    // Clear all transient transaction and security state
+    this.pinBuffer = '';
+    this.withdrawInput = '';
+    this.depositCounts = { 500: 0, 200: 0, 100: 0, 50: 0 };
+    if (typeof clearTemporaryCvv === 'function') {
+      clearTemporaryCvv('session timeout');
+    }
+    this.stopFaceCamera();
+    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+
+    // Eject card and show accessible alert
+    this.ejectCard('ATM session timed out due to 60 seconds of inactivity.');
+    announceA11y('ATM session timed out due to inactivity. Card safely ejected.', 'assertive');
   }
 
   switchScreen(screenId, speechPrompt = '') {
@@ -489,36 +761,30 @@ class AtmController {
       this.ejectScreenTimeout = null;
     }
 
-    // Reset auto-eject timer
+    // Reset inactivity tracking on screen change
     this.resetInactivityTimer();
-  }
-
-  resetInactivityTimer() {
-    if (this.autoEjectTimer) clearTimeout(this.autoEjectTimer);
-    if (this.countdownInterval) clearInterval(this.countdownInterval);
-
-    // Auto eject if user is authenticated and idle for 60 seconds
-    if (this.isCardInserted && this.isAuthenticated && this.currentScreen !== 'screenSuccess') {
-      this.autoEjectTimer = setTimeout(() => {
-        this.ejectCard('Session timed out due to inactivity.');
-      }, 60000);
-    }
   }
 
   insertCard(cardId = null) {
     if (cardId) state.data.activeCardId = cardId;
     const card = state.getActiveCard();
 
+    // Check authoritative freeze state
     if (card.frozen) {
       audio.playErrorTone();
-      showToast('This card is currently FROZEN. Unfreeze it in the dashboard to use.', 'error');
+      showToast('Transaction declined. This card is frozen. Unfreeze it in the dashboard to use.', 'error');
+      announceA11y('Transaction declined: This card is frozen. Unfreeze it in dashboard to use.', 'assertive');
       return;
     }
 
+    this.sessionCardId = card.id;
+    this.sessionAuthToken++;
     this.isCardInserted = true;
     this.isAuthenticated = false;
     this.pinBuffer = '';
     this.pinRetriesLeft = 3;
+    this.lastActivityTime = Date.now();
+    this.scheduleInactivityTimers();
 
     // Play sound & slot animations
     audio.playCardInsertSound();
@@ -562,16 +828,16 @@ class AtmController {
     const hadCard = this.isCardInserted;
     this.isCardInserted = false;
     this.isAuthenticated = false;
+    this.sessionCardId = null;
+    this.sessionAuthToken++;
     this.pinBuffer = '';
     this.withdrawInput = '';
 
-    if (this.countdownInterval) {
-      clearInterval(this.countdownInterval);
-      this.countdownInterval = null;
-    }
-    if (this.autoEjectTimer) {
-      clearTimeout(this.autoEjectTimer);
-      this.autoEjectTimer = null;
+    // Teardown inactivity timers and warning modal
+    this.clearInactivityTimers();
+    this.stopFaceCamera();
+    if (typeof clearTemporaryCvv === 'function') {
+      clearTemporaryCvv('session ended');
     }
 
     audio.playCardInsertSound();
@@ -608,7 +874,18 @@ class AtmController {
   // BIOMETRIC FACE LOGIN & OPTICAL SCAN ENGINE
   // ==========================================
   startFaceLogin() {
-    this.switchScreen('screenFaceAuth', 'Initializing biometric face scanner. Please look directly into the camera.');
+    const card = state.getActiveCard();
+    if (card.frozen) {
+      audio.playErrorTone();
+      showToast('Biometric login unavailable: Card is currently frozen. Unfreeze in dashboard to use.', 'error');
+      announceA11y('Biometric login unavailable: Card is frozen.');
+      return;
+    }
+
+    const currentToken = ++this.sessionAuthToken;
+    this.sessionCardId = card.id;
+
+    this.switchScreen('screenFaceAuth', 'Initializing biometric face scanner demonstration. Please look directly into the camera.');
     audio.playBiometricScanSound();
 
     const videoEl = document.getElementById('atmFaceAuthVideo');
@@ -638,6 +915,10 @@ class AtmController {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 } } })
         .then(stream => {
+          if (this.sessionAuthToken !== currentToken) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+          }
           this.atmFaceStream = stream;
           if (videoEl) {
             videoEl.setAttribute('playsinline', '');
@@ -650,29 +931,30 @@ class AtmController {
             sensorBadge.className = 'sensor-badge live';
             sensorBadge.innerHTML = '<i class="fa-solid fa-circle" style="color:var(--accent-green)"></i> WEBCAM SENSOR LIVE';
           }
-          this.runFaceScanSequence();
+          this.runFaceScanSequence(currentToken);
         })
         .catch(err => {
-          console.warn('Webcam permission not granted or device busy, falling back to verified AI Mesh simulation:', err);
+          console.warn('Webcam permission not granted or device busy, falling back to simulated optical mesh:', err);
           if (sensorBadge) {
             sensorBadge.className = 'sensor-badge live';
             sensorBadge.innerHTML = '<i class="fa-solid fa-circle-nodes" style="color:var(--accent-cyan)"></i> AI SENSOR ACTIVE';
           }
-          showToast('Webcam not allowed or camera in use. Running simulated optical AI mesh.', 'info');
-          this.runFaceScanSequence();
+          showToast('Webcam in use or blocked. Running simulated optical AI mesh.', 'info');
+          this.runFaceScanSequence(currentToken);
         });
     } else {
       if (sensorBadge) {
         sensorBadge.className = 'sensor-badge live';
         sensorBadge.innerHTML = '<i class="fa-solid fa-circle-nodes" style="color:var(--accent-cyan)"></i> AI SENSOR ACTIVE';
       }
-      this.runFaceScanSequence();
+      this.runFaceScanSequence(currentToken);
     }
   }
 
-  runFaceScanSequence() {
+  runFaceScanSequence(currentToken = null) {
     if (this.faceScanInterval) clearInterval(this.faceScanInterval);
 
+    const token = currentToken || this.sessionAuthToken;
     const fillBar = document.getElementById('faceAuthProgressFill');
     const stepLabel = document.getElementById('faceAuthStepLabel');
     const percentLabel = document.getElementById('faceAuthPercentLabel');
@@ -681,6 +963,12 @@ class AtmController {
 
     let progress = 0;
     const interval = setInterval(() => {
+      // Abort if session cancelled or changed
+      if (this.sessionAuthToken !== token || this.currentScreen !== 'screenFaceAuth') {
+        clearInterval(interval);
+        return;
+      }
+
       progress += Math.floor(12 + Math.random() * 14);
       if (progress > 100) progress = 100;
 
@@ -688,19 +976,29 @@ class AtmController {
       if (percentLabel) percentLabel.textContent = `${progress}%`;
 
       if (progress < 30) {
-        if (stepLabel) stepLabel.textContent = 'Detecting facial mesh landmarks...';
-        if (statusMsg) statusMsg.innerHTML = '<i class="fa-solid fa-arrows-to-circle"></i> DETECTING 68 LANDMARKS';
+        if (stepLabel) stepLabel.textContent = 'Simulating facial landmark detection...';
+        if (statusMsg) statusMsg.innerHTML = '<i class="fa-solid fa-arrows-to-circle"></i> DETECTING 68 SIMULATED POINTS';
       } else if (progress < 70) {
-        if (stepLabel) stepLabel.textContent = 'Cross-referencing biometric hash ledger...';
-        if (statusMsg) statusMsg.innerHTML = '<i class="fa-solid fa-fingerprint"></i> MATCHING KYC SIGNATURE';
+        if (stepLabel) stepLabel.textContent = 'Comparing demo facial profile pattern...';
+        if (statusMsg) statusMsg.innerHTML = '<i class="fa-solid fa-fingerprint"></i> MATCHING DEMO KYC PROFILE';
       } else if (progress < 100) {
-        if (stepLabel) stepLabel.textContent = 'Decrypting session certificate & PIN bypass...';
-        if (statusMsg) statusMsg.innerHTML = '<i class="fa-solid fa-shield-halved"></i> DECRYPTING TOKEN';
+        if (stepLabel) stepLabel.textContent = 'Creating transient session token...';
+        if (statusMsg) statusMsg.innerHTML = '<i class="fa-solid fa-shield-halved"></i> DEMO CREDENTIAL ISSUED';
       } else {
         clearInterval(interval);
         this.faceScanInterval = null;
 
-        const card = state.getActiveCard();
+        const cardId = this.sessionCardId || state.data.activeCardId;
+        const card = state.data.cards.find(c => c.id === cardId) || state.getActiveCard();
+
+        // Validate card freeze before committing authentication
+        if (card.frozen) {
+          this.cancelFaceLogin();
+          showToast('Authentication declined: Card is frozen.', 'error');
+          announceA11y('Authentication declined: Card is frozen.');
+          return;
+        }
+
         if (successCard) {
           const nameEl = document.getElementById('matchCardholderName');
           const tierEl = document.getElementById('matchTierLabel');
@@ -710,12 +1008,22 @@ class AtmController {
         }
 
         audio.playBiometricSuccessSound();
-        showToast(`Face-ID Verified: Welcome back, ${card.holder}!`, 'success');
+        showToast(`Face-ID Verified (Simulated): Welcome back, ${card.holder}!`, 'success');
 
-        setTimeout(() => {
+        if (this.faceAuthTimeout) clearTimeout(this.faceAuthTimeout);
+        this.faceAuthTimeout = setTimeout(() => {
+          if (this.sessionAuthToken !== token || this.currentScreen !== 'screenFaceAuth') return;
+          if (card.frozen) {
+            this.cancelFaceLogin();
+            showToast('Authentication declined: Card is frozen.', 'error');
+            return;
+          }
+
           this.stopFaceCamera();
           this.isAuthenticated = true;
           this.isCardInserted = true;
+          this.lastActivityTime = Date.now();
+          this.scheduleInactivityTimers();
 
           const graphic = document.getElementById('cardInSlotGraphic');
           if (graphic) graphic.classList.add('inserted');
@@ -725,9 +1033,10 @@ class AtmController {
           if (statusText) statusText.textContent = `FACE-ID LOGGED IN (${card.holder})`;
 
           document.getElementById('menuUserName').textContent = `${card.holder} (Face-ID)`;
-          document.getElementById('menuCardType').textContent = `${card.tierLabel} • Biometric Session`;
+          document.getElementById('menuCardType').textContent = `${card.tierLabel} • Biometric Demo`;
 
           this.switchScreen('screenMainMenu', `Biometric identity verified. Welcome ${card.holder}.`);
+          announceA11y(`Biometric identity verified. Welcome ${card.holder}.`);
         }, 1300);
       }
     }, 180);
@@ -740,6 +1049,10 @@ class AtmController {
       clearInterval(this.faceScanInterval);
       this.faceScanInterval = null;
     }
+    if (this.faceAuthTimeout) {
+      clearTimeout(this.faceAuthTimeout);
+      this.faceAuthTimeout = null;
+    }
     if (this.atmFaceStream) {
       this.atmFaceStream.getTracks().forEach(t => t.stop());
       this.atmFaceStream = null;
@@ -749,6 +1062,7 @@ class AtmController {
   }
 
   cancelFaceLogin() {
+    this.sessionAuthToken++;
     this.stopFaceCamera();
     this.switchScreen('screenWelcome', 'Biometric login cancelled. Please insert card or select an option.');
   }
@@ -873,12 +1187,25 @@ class AtmController {
       return;
     }
 
-    const card = state.getActiveCard();
+    const cardId = this.sessionCardId || state.data.activeCardId;
+    const card = state.data.cards.find(c => c.id === cardId) || state.getActiveCard();
+
+    // Check card freeze status
+    if (card.frozen) {
+      audio.playErrorTone();
+      this.ejectCard('Transaction declined. This card is frozen. Unfreeze to continue.');
+      announceA11y('Transaction declined: This card is frozen.', 'assertive');
+      return;
+    }
+
     if (this.pinBuffer === card.pin) {
       // Success
       audio.playEnterTone();
+      this.sessionCardId = card.id;
       this.isAuthenticated = true;
       this.pinBuffer = '';
+      this.lastActivityTime = Date.now();
+      this.scheduleInactivityTimers();
 
       // Populate Main Menu
       document.getElementById('menuUserName').textContent = card.holder;
@@ -886,6 +1213,7 @@ class AtmController {
 
       this.switchScreen('screenMainMenu', `Welcome ${card.holder}. Please select a transaction.`);
       showToast('PIN verified successfully!', 'success');
+      announceA11y(`Welcome ${card.holder}. PIN verified successfully.`);
     } else {
       // Failed PIN attempt
       audio.playErrorTone();
@@ -903,15 +1231,18 @@ class AtmController {
         card.frozen = true;
         state.saveState();
         updateDashboardUI();
+        announceA11y('Card locked due to 3 incorrect PIN attempts.', 'assertive');
         this.ejectCard('Card locked due to 3 incorrect PIN attempts for security.');
       } else {
         showToast(`Incorrect PIN! ${this.pinRetriesLeft} attempts remaining.`, 'error');
+        announceA11y(`Incorrect PIN. ${this.pinRetriesLeft} attempts remaining.`);
       }
     }
   }
 
   // Side Function Keys (F1 - F8) router
   handleSideKey(keyName) {
+    this.recordUserActivity();
     audio.playKeypadBeep(1200);
 
     const keyBtn = document.querySelector(`.side-key[data-key="${keyName}"]`);
@@ -933,6 +1264,10 @@ class AtmController {
         break;
 
       case 'screenMainMenu':
+        if (!this.isAuthenticated) {
+          this.ejectCard('Authentication required.');
+          break;
+        }
         if (keyName === 'F1') this.openBalanceScreen();
         if (keyName === 'F2') this.openFastCashScreen();
         if (keyName === 'F3') this.openWithdrawScreen();
@@ -1007,6 +1342,13 @@ class AtmController {
 
   // Screens Operations
   openBalanceScreen() {
+    const auth = this.authorizeCardTransaction('inquiry');
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
     document.getElementById('screenCheckingAvail').textContent = state.formatMoney(state.data.accounts.checking.balance);
     document.getElementById('screenCheckingLedger').textContent = state.formatMoney(state.data.accounts.checking.balance);
     document.getElementById('screenSavingsAvail').textContent = state.formatMoney(state.data.accounts.savings.balance);
@@ -1014,10 +1356,24 @@ class AtmController {
   }
 
   openFastCashScreen() {
+    const auth = this.authorizeCardTransaction('inquiry');
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
     this.switchScreen('screenFastCash', 'Select a quick cash amount to dispense.');
   }
 
   openWithdrawScreen() {
+    const auth = this.authorizeCardTransaction('inquiry');
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
     this.withdrawInput = '';
     this.updateWithdrawInput();
     document.getElementById('withdrawCheckBal').textContent = state.data.accounts.checking.balance.toLocaleString('en-IN', { minimumFractionDigits: 2 });
@@ -1028,17 +1384,38 @@ class AtmController {
   }
 
   openDepositScreen() {
+    const auth = this.authorizeCardTransaction('inquiry');
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
     this.depositCounts = { 500: 0, 200: 0, 100: 0, 50: 0 };
     this.updateDepositCounterDisplay();
     this.switchScreen('screenDeposit', 'Insert cash notes or enter cheque details.');
   }
 
   openTransferScreen() {
+    const auth = this.authorizeCardTransaction('inquiry');
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
     document.getElementById('transferAmountInput').value = '';
     this.switchScreen('screenTransfer', 'Enter recipient details and transfer amount.');
   }
 
   openPinChangeScreen() {
+    const auth = this.authorizeCardTransaction('inquiry');
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
     document.getElementById('currentPinInput').value = '';
     document.getElementById('newPinInput').value = '';
     document.getElementById('confirmNewPinInput').value = '';
@@ -1046,7 +1423,14 @@ class AtmController {
   }
 
   openStatementScreen() {
-    const card = state.getActiveCard();
+    const auth = this.authorizeCardTransaction('inquiry');
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
+    const card = auth.card;
     document.getElementById('statementCardBadge').textContent = `Card •••• ${card.number.slice(-4)}`;
     
     const tbody = document.getElementById('screenStatementBody');
@@ -1187,8 +1571,20 @@ class AtmController {
 
   // Withdraw Logic
   executeFastCash(amount) {
-    const card = state.getActiveCard();
-    this.processWithdrawal(amount, card.linkedAccount || 'checking', 'mixed');
+    this.recordUserActivity();
+    const cardId = this.sessionCardId || state.data.activeCardId;
+    const card = state.data.cards.find(c => c.id === cardId) || state.getActiveCard();
+    const accountKey = card.linkedAccount || 'checking';
+
+    const auth = this.authorizeCardTransaction('fastcash', amount, accountKey);
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
+
+    this.processWithdrawal(amount, accountKey, 'mixed');
   }
 
   updateWithdrawInput() {
@@ -1198,6 +1594,7 @@ class AtmController {
   }
 
   confirmCustomWithdrawal() {
+    this.recordUserActivity();
     const amount = parseFloat(this.withdrawInput);
     if (!amount || amount <= 0) {
       audio.playErrorTone();
@@ -1211,34 +1608,45 @@ class AtmController {
       return;
     }
 
+    const auth = this.authorizeCardTransaction('withdrawal', amount, this.selectedWithdrawAccount);
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      document.getElementById('withdrawErrorMsg').textContent = auth.reason;
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
+
     const denomPref = document.querySelector('input[name="denomPref"]:checked')?.value || 'mixed';
     this.processWithdrawal(amount, this.selectedWithdrawAccount, denomPref);
   }
 
   processWithdrawal(amount, accountKey, denomPref) {
-    const account = state.getAccount(accountKey);
-    const card = state.getActiveCard();
+    this.recordUserActivity();
 
-    // Limit check
-    const remainingLimit = state.data.dailyLimit - state.data.withdrawnToday;
-    if (amount > remainingLimit) {
+    // 1. Centralized Authorization Precondition Check (Validates freeze, session, limits, balance)
+    const auth = this.authorizeCardTransaction('withdrawal', amount, accountKey);
+    if (!auth.authorized) {
       audio.playErrorTone();
-      showToast(`Daily ATM limit exceeded! Remaining: ${state.formatMoney(remainingLimit)}`, 'error');
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
       return;
     }
 
-    // Funds check
-    if (amount > account.balance) {
+    const account = auth.account;
+    const card = auth.card;
+
+    // 2. Validate physical banknote cassette capacity before any state changes
+    if (!state.data.cassettes) state.data.cassettes = { 500: 1840, 200: 1450, 100: 1920, 50: 980 };
+    const totalCassetteCash = (state.data.cassettes[500] * 500) + (state.data.cassettes[200] * 200) + (state.data.cassettes[100] * 100) + (state.data.cassettes[50] * 50);
+    if (amount > totalCassetteCash) {
       audio.playErrorTone();
-      showToast(`Insufficient funds in ${account.name}! Available: ${state.formatMoney(account.balance)}`, 'error');
+      showToast('Transaction declined: ATM cash inventory insufficient. Please try a smaller amount.', 'error');
+      announceA11y('Transaction declined: Insufficient ATM cash inventory.', 'assertive');
       return;
     }
 
-    // Execute withdrawal
-    account.balance -= amount;
-    state.data.withdrawnToday += amount;
-
-    // Calculate realistic Rupee note breakdown (₹500, ₹200, ₹100, ₹50)
+    // 3. Calculate note breakdown
     let notesText = '';
     let n500 = 0, n200 = 0, n100 = 0, n50 = 0;
 
@@ -1266,8 +1674,9 @@ class AtmController {
       notesText = parts.join(', ') || `${Math.floor(amount / 50)}x ₹50`;
     }
 
-    // Decrement physical banknote cassette counts in state
-    if (!state.data.cassettes) state.data.cassettes = { 500: 1840, 200: 1450, 100: 1920, 50: 980 };
+    // 4. Atomic Commit: Mutate Financial State
+    account.balance -= amount;
+    state.data.withdrawnToday += amount;
     state.data.cassettes[500] = Math.max(0, state.data.cassettes[500] - n500);
     state.data.cassettes[200] = Math.max(0, state.data.cassettes[200] - n200);
     state.data.cassettes[100] = Math.max(0, state.data.cassettes[100] - n100);
@@ -1350,9 +1759,18 @@ class AtmController {
   }
 
   confirmDeposit() {
+    this.recordUserActivity();
+    const auth = this.authorizeCardTransaction('deposit');
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
+
     const targetAccountKey = document.getElementById('depositTargetAccount').value;
     const account = state.getAccount(targetAccountKey);
-    const card = state.getActiveCard();
+    const card = auth.card;
     let amount = 0;
     let typeLabel = '';
 
@@ -1377,7 +1795,7 @@ class AtmController {
       typeLabel = `Cheque Deposit #${chequeNo} (${bank || 'Bank'})`;
     }
 
-    // Execute Deposit
+    // Atomic Commit: Update Financial State
     account.balance += amount;
 
     const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1434,12 +1852,11 @@ class AtmController {
 
   // Transfer Logic
   confirmTransfer() {
+    this.recordUserActivity();
     const target = document.getElementById('transferTargetInput').value.trim();
     const amount = parseFloat(document.getElementById('transferAmountInput').value);
     const sourceKey = document.getElementById('transferSourceAccount').value;
     const memo = document.getElementById('transferNoteInput').value.trim();
-    const account = state.getAccount(sourceKey);
-    const card = state.getActiveCard();
 
     if (!target) {
       audio.playErrorTone();
@@ -1453,13 +1870,18 @@ class AtmController {
       return;
     }
 
-    if (amount > account.balance) {
+    const auth = this.authorizeCardTransaction('transfer', amount, sourceKey);
+    if (!auth.authorized) {
       audio.playErrorTone();
-      showToast(`Insufficient funds in ${account.name}! Available: ${state.formatMoney(account.balance)}`, 'error');
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
       return;
     }
 
-    // Execute transfer
+    const account = auth.account;
+    const card = auth.card;
+
+    // Atomic Commit: Update Financial State
     account.balance -= amount;
 
     const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1506,10 +1928,19 @@ class AtmController {
 
   // PIN Change Logic
   confirmPinChange() {
+    this.recordUserActivity();
+    const auth = this.authorizeCardTransaction('pinchange');
+    if (!auth.authorized) {
+      audio.playErrorTone();
+      showToast(auth.reason, 'error');
+      announceA11y(auth.reason, 'assertive');
+      return;
+    }
+
     const curPin = document.getElementById('currentPinInput').value;
     const newPin = document.getElementById('newPinInput').value;
     const confirmPin = document.getElementById('confirmNewPinInput').value;
-    const card = state.getActiveCard();
+    const card = auth.card;
 
     if (curPin !== card.pin) {
       audio.playErrorTone();
@@ -1657,7 +2088,231 @@ const atm = new AtmController();
 
 
 // =============================================================================
-// 4. DIGITAL COMPANION & WALLET CONTROLLER
+// 4. TRANSIENT SIMULATED CVV ENGINE (MILESTONE 3)
+// =============================================================================
+let transientCvvState = {
+  cardId: null,
+  cvv: null,
+  expiresAt: null,
+  timer: null,
+  interval: null
+};
+
+/**
+ * Generate a cryptographically uniform 3-digit simulated CVV (000-999)
+ * Uses rejection sampling on 16-bit random integers to eliminate modulo bias.
+ */
+function generateUniform3DigitCvv() {
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+    const uint16 = new Uint16Array(1);
+    // 65000 is the largest multiple of 1000 <= 65536.
+    // Numbers >= 65000 are rejected to ensure completely uniform distribution 000..999
+    let attempts = 0;
+    while (attempts < 100) {
+      window.crypto.getRandomValues(uint16);
+      if (uint16[0] < 65000) {
+        const val = uint16[0] % 1000;
+        return String(val).padStart(3, '0');
+      }
+      attempts++;
+    }
+  }
+  return null;
+}
+
+/**
+ * Clear temporary CVV and reset DOM elements
+ */
+function clearTemporaryCvv(reason = '') {
+  if (transientCvvState.timer) {
+    clearTimeout(transientCvvState.timer);
+    transientCvvState.timer = null;
+  }
+  if (transientCvvState.interval) {
+    clearInterval(transientCvvState.interval);
+    transientCvvState.interval = null;
+  }
+
+  const wasActive = !!transientCvvState.cvv;
+  transientCvvState.cardId = null;
+  transientCvvState.cvv = null;
+  transientCvvState.expiresAt = null;
+
+  const cvvDisplay = document.getElementById('cardDisplayCvv');
+  if (cvvDisplay) cvvDisplay.textContent = '•••';
+
+  const miniCountdown = document.getElementById('cardCvvMiniCountdown');
+  if (miniCountdown) {
+    miniCountdown.style.display = 'none';
+    miniCountdown.textContent = '';
+  }
+
+  const cvvStatePill = document.getElementById('cvvStatePill');
+  if (cvvStatePill) {
+    cvvStatePill.className = 'cvv-state-pill masked';
+    cvvStatePill.textContent = 'MASKED';
+  }
+
+  const cvvTimerDisplay = document.getElementById('cvvTimerDisplay');
+  if (cvvTimerDisplay) cvvTimerDisplay.style.display = 'none';
+
+  const btnRevealCvv = document.getElementById('btnRevealCvv');
+  if (btnRevealCvv) {
+    btnRevealCvv.disabled = false;
+    btnRevealCvv.innerHTML = '<i class="fa-solid fa-eye" aria-hidden="true"></i> <span>Reveal Simulated CVV</span>';
+  }
+
+  if (wasActive && reason) {
+    announceA11y(`Simulated CVV expired and masked.`);
+    showToast(`Temporary CVV cleared (${reason}).`, 'info');
+  }
+}
+
+/**
+ * Reveal simulated temporary CVV for 30 seconds
+ */
+function revealTemporaryCvv(cardId) {
+  const card = state.data.cards.find(c => c.id === cardId);
+  if (!card) return;
+
+  if (card.frozen) {
+    audio.playErrorTone();
+    showToast('Cannot generate CVV: Card is frozen. Unfreeze to use.', 'error');
+    announceA11y('Cannot generate CVV: Card is frozen.');
+    return;
+  }
+
+  const newCvv = generateUniform3DigitCvv();
+  if (!newCvv) {
+    showToast('Secure Web Crypto is unavailable. Cannot generate CVV safely.', 'error');
+    return;
+  }
+
+  // Clear previous timer if any
+  if (transientCvvState.timer) clearTimeout(transientCvvState.timer);
+  if (transientCvvState.interval) clearInterval(transientCvvState.interval);
+
+  const durationMs = 30000;
+  const expiresAt = Date.now() + durationMs;
+
+  transientCvvState.cardId = card.id;
+  transientCvvState.cvv = newCvv;
+  transientCvvState.expiresAt = expiresAt;
+
+  updateDashboardUI();
+
+  // Flip card to reveal back face if currently showing front face
+  const card3d = document.getElementById('card3d');
+  if (card3d && !card3d.classList.contains('flipped')) {
+    card3d.classList.add('flipped');
+  }
+
+  audio.playEnterTone();
+  showToast(`Temporary simulated CVV generated. Valid for 30 seconds.`, 'success');
+  announceA11y(`Simulated CVV generated. Active for 30 seconds.`);
+
+  // Set expiration timer
+  transientCvvState.timer = setTimeout(() => {
+    clearTemporaryCvv('expired');
+  }, durationMs);
+
+  // Set interval for live countdown update
+  transientCvvState.interval = setInterval(() => {
+    const remainingMs = transientCvvState.expiresAt - Date.now();
+    const remainingSec = Math.max(0, Math.ceil(remainingMs / 1000));
+
+    if (remainingSec <= 0) {
+      clearTemporaryCvv('expired');
+      return;
+    }
+
+    const miniCountdown = document.getElementById('cardCvvMiniCountdown');
+    if (miniCountdown) miniCountdown.textContent = `${remainingSec}s`;
+
+    const secEl = document.getElementById('cvvSecondsRemaining');
+    if (secEl) secEl.textContent = `${remainingSec}s`;
+
+    // Screen reader announcement milestones: 15s and 5s
+    if (remainingSec === 15) {
+      announceA11y('Simulated CVV expires in 15 seconds.');
+    } else if (remainingSec === 5) {
+      announceA11y('Simulated CVV expires in 5 seconds.');
+    }
+  }, 1000);
+}
+
+/**
+ * Open CVV Authentication PIN modal or reveal directly if already authenticated at ATM
+ */
+function handleRequestCvvReveal() {
+  const card = state.getActiveCard();
+  if (!card) return;
+
+  if (card.frozen) {
+    audio.playErrorTone();
+    showToast('Cannot reveal CVV: This card is frozen. Unfreeze it first.', 'error');
+    announceA11y('Cannot reveal CVV: Card is frozen.');
+    return;
+  }
+
+  // If the ATM session is already authenticated for this card, immediate reveal
+  if (atm.isAuthenticated && (atm.sessionCardId === card.id || (!atm.sessionCardId && state.data.activeCardId === card.id))) {
+    revealTemporaryCvv(card.id);
+    return;
+  }
+
+  // Open PIN verification modal
+  const modal = document.getElementById('cvvAuthModal');
+  const nameEl = document.getElementById('cvvAuthCardholder');
+  const pinInput = document.getElementById('cvvAuthPinInput');
+  const errEl = document.getElementById('cvvAuthPinError');
+
+  if (nameEl) nameEl.textContent = card.holder;
+  if (pinInput) pinInput.value = '';
+  if (errEl) {
+    errEl.textContent = '';
+    errEl.style.display = 'none';
+  }
+
+  if (modal) {
+    modal.classList.add('active');
+    setTimeout(() => pinInput?.focus(), 100);
+  }
+}
+
+function closeCvvAuthModal() {
+  const modal = document.getElementById('cvvAuthModal');
+  if (modal) modal.classList.remove('active');
+  const pinInput = document.getElementById('cvvAuthPinInput');
+  if (pinInput) pinInput.value = '';
+}
+
+function verifyCvvAuthPin() {
+  const card = state.getActiveCard();
+  const pinInput = document.getElementById('cvvAuthPinInput');
+  const errEl = document.getElementById('cvvAuthPinError');
+  const entered = (pinInput?.value || '').trim();
+
+  if (entered !== card.pin) {
+    audio.playErrorTone();
+    if (errEl) {
+      errEl.textContent = 'Incorrect PIN. Please enter the valid 4-digit card PIN.';
+      errEl.style.display = 'block';
+    }
+    if (pinInput) {
+      pinInput.value = '';
+      pinInput.focus();
+    }
+    return;
+  }
+
+  closeCvvAuthModal();
+  revealTemporaryCvv(card.id);
+}
+
+
+// =============================================================================
+// 5. DIGITAL COMPANION & WALLET CONTROLLER
 // =============================================================================
 function updateDashboardUI() {
   const card = state.getActiveCard();
@@ -1670,7 +2325,45 @@ function updateDashboardUI() {
   document.getElementById('cardDisplayNumber').textContent = `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`;
   document.getElementById('cardDisplayHolder').textContent = card.holder;
   document.getElementById('cardDisplayExpiry').textContent = card.expiry;
-  document.getElementById('cardDisplayCvv').textContent = card.cvv;
+
+  // Milestone 3: CVV is masked by default. Only reveal if transient CVV is active for this card
+  const cvvDisplay = document.getElementById('cardDisplayCvv');
+  const miniCountdown = document.getElementById('cardCvvMiniCountdown');
+  const cvvStatePill = document.getElementById('cvvStatePill');
+  const cvvTimerDisplay = document.getElementById('cvvTimerDisplay');
+  const cvvSecondsRemaining = document.getElementById('cvvSecondsRemaining');
+  const btnRevealCvv = document.getElementById('btnRevealCvv');
+
+  if (transientCvvState.cardId === card.id && transientCvvState.cvv && transientCvvState.expiresAt > Date.now()) {
+    if (cvvDisplay) cvvDisplay.textContent = transientCvvState.cvv;
+    const secLeft = Math.max(1, Math.ceil((transientCvvState.expiresAt - Date.now()) / 1000));
+    if (miniCountdown) {
+      miniCountdown.style.display = 'inline-block';
+      miniCountdown.textContent = `${secLeft}s`;
+    }
+    if (cvvStatePill) {
+      cvvStatePill.className = 'cvv-state-pill active';
+      cvvStatePill.textContent = 'ACTIVE';
+    }
+    if (cvvTimerDisplay) cvvTimerDisplay.style.display = 'inline-flex';
+    if (cvvSecondsRemaining) cvvSecondsRemaining.textContent = `${secLeft}s`;
+    if (btnRevealCvv) {
+      btnRevealCvv.disabled = true;
+      btnRevealCvv.innerHTML = '<i class="fa-solid fa-lock" aria-hidden="true"></i> <span>CVV Active</span>';
+    }
+  } else {
+    if (cvvDisplay) cvvDisplay.textContent = '•••';
+    if (miniCountdown) miniCountdown.style.display = 'none';
+    if (cvvStatePill) {
+      cvvStatePill.className = 'cvv-state-pill masked';
+      cvvStatePill.textContent = 'MASKED';
+    }
+    if (cvvTimerDisplay) cvvTimerDisplay.style.display = 'none';
+    if (btnRevealCvv) {
+      btnRevealCvv.disabled = false;
+      btnRevealCvv.innerHTML = '<i class="fa-solid fa-eye" aria-hidden="true"></i> <span>Reveal Simulated CVV</span>';
+    }
+  }
   
   // Brand logo
   const brandLogo = document.getElementById('cardBrandLogo');
@@ -1696,8 +2389,28 @@ function updateDashboardUI() {
     if (bioPlaceholder) bioPlaceholder.style.display = 'block';
   }
 
-  // Toggles
-  document.getElementById('freezeCardToggle').checked = !!card.frozen;
+  // Freeze Toggle & Status Badge (Milestone 3 high-contrast, not color-alone)
+  const freezeToggle = document.getElementById('freezeCardToggle');
+  const freezeBadge = document.getElementById('freezeStatusBadge');
+  const freezeText = document.getElementById('freezeStatusText');
+  const freezeIcon = document.getElementById('freezeStatusIcon');
+
+  if (freezeToggle) {
+    freezeToggle.checked = !!card.frozen;
+    freezeToggle.setAttribute('aria-checked', card.frozen ? 'true' : 'false');
+  }
+  if (freezeBadge && freezeText && freezeIcon) {
+    if (card.frozen) {
+      freezeBadge.className = 'card-freeze-status-badge frozen';
+      freezeIcon.className = 'fa-solid fa-shield-halved';
+      freezeText.textContent = 'FROZEN (LOCKED)';
+    } else {
+      freezeBadge.className = 'card-freeze-status-badge active';
+      freezeIcon.className = 'fa-solid fa-shield-check';
+      freezeText.textContent = 'OPERATIONAL';
+    }
+  }
+
   document.getElementById('intlAccessToggle').checked = !!card.intl;
   document.getElementById('contactlessToggle').checked = !!card.contactless;
 
@@ -2958,15 +3671,62 @@ function initEventListeners() {
     }
   });
 
-  // Companion Card Controls
+  // Companion Card Controls & Milestone 3 Security Wiring
   document.getElementById('insertSelectedCardBtn')?.addEventListener('click', () => atm.insertCard());
   document.getElementById('ejectCardManualBtn')?.addEventListener('click', () => atm.ejectCard());
 
+  // Card Freeze / Lock Toggle with Immediate Session Invalidation
   document.getElementById('freezeCardToggle')?.addEventListener('change', (e) => {
     const card = state.getActiveCard();
     card.frozen = e.target.checked;
     state.saveState();
-    showToast(`Card ${card.frozen ? 'FROZEN (Locked)' : 'UNFROZEN (Active)'}.`, card.frozen ? 'error' : 'success');
+    updateDashboardUI();
+
+    if (card.frozen) {
+      clearTemporaryCvv('card frozen');
+      announceA11y(`Card ${card.holder} is now FROZEN. All ATM operations are locked.`, 'assertive');
+      showToast('Card FROZEN (Locked). All ATM transactions blocked.', 'error');
+
+      // Immediate Freeze Reaction: Eject and clear session if this card is currently inserted
+      if (atm.isCardInserted && (!atm.sessionCardId || atm.sessionCardId === card.id)) {
+        atm.ejectCard('Security Alert: Card was frozen from Digital Companion. Session terminated.');
+      }
+    } else {
+      announceA11y(`Card ${card.holder} is now UNFROZEN and operational.`, 'polite');
+      showToast('Card UNFROZEN (Active). Ready for ATM transactions.', 'success');
+    }
+  });
+
+  // Simulated Temporary CVV Controls (Milestone 3)
+  document.getElementById('btnRevealCvv')?.addEventListener('click', handleRequestCvvReveal);
+  document.getElementById('btnCloseCvvAuthModal')?.addEventListener('click', closeCvvAuthModal);
+  document.getElementById('btnCancelCvvAuth')?.addEventListener('click', closeCvvAuthModal);
+  document.getElementById('btnConfirmCvvAuth')?.addEventListener('click', verifyCvvAuthPin);
+  document.getElementById('cvvAuthPinInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') verifyCvvAuthPin();
+    if (e.key === 'Escape') closeCvvAuthModal();
+  });
+
+  // Inactivity Warning Modal Actions (Milestone 3)
+  document.getElementById('btnContinueSession')?.addEventListener('click', () => {
+    atm.recordUserActivity();
+  });
+  document.getElementById('btnCancelSessionNow')?.addEventListener('click', () => {
+    atm.ejectCard('Session ended by customer.');
+  });
+
+  // Meaningful user activity tracking on physical and simulated ATM elements
+  ['keydown', 'mousedown', 'touchstart'].forEach(evt => {
+    document.addEventListener(evt, (e) => {
+      const isAtm = e.target.closest('#atmMachineChassis') || 
+                    e.target.closest('.atm-screen') || 
+                    e.target.closest('.key-btn') || 
+                    e.target.closest('.side-key') || 
+                    e.target.closest('#inactivityWarningModal');
+      if (isAtm) {
+        atm.recordUserActivity();
+      }
+    }, { passive: true });
   });
 
   document.getElementById('intlAccessToggle')?.addEventListener('change', (e) => {
@@ -2986,6 +3746,7 @@ function initEventListeners() {
   document.getElementById('userCardSelector')?.addEventListener('change', (e) => {
     state.data.activeCardId = e.target.value;
     state.saveState();
+    clearTemporaryCvv('active wallet card switched');
     updateDashboardUI();
     if (atm.isCardInserted) {
       atm.ejectCard('Card switched in wallet. Please insert the new card.');
@@ -3421,33 +4182,79 @@ class VoiceCommandController {
   }
 
   handleVoiceCommand(text) {
+    if (typeof atm !== 'undefined') {
+      atm.recordUserActivity();
+    }
     showToast(`Voice Command: "${text}"`, 'info');
     const hudTitle = document.getElementById('voiceHudTitle');
-    if (hudTitle) hudTitle.innerHTML = `<i class="fa-solid fa-check"></i> Executing: "${text}"`;
+    if (hudTitle) hudTitle.innerHTML = `<i class="fa-solid fa-check"></i> Processing: "${text}"`;
 
+    const activeCard = state.getActiveCard();
+    const isProtectedCommand = text.includes('fast cash') || text.includes('fastcash') || 
+                               text.includes('balance') || text.includes('inquiry') ||
+                               text.includes('deposit') || text.includes('withdraw') || 
+                               text.includes('statement') || text.includes('pin');
+
+    // 1. Authoritative freeze check for voice pathway
+    if (activeCard.frozen && isProtectedCommand) {
+      audio.playErrorTone();
+      audio.speak('Transaction declined. Your card is frozen. Unfreeze it in the dashboard to proceed.');
+      showToast('Voice Command Declined: Card is FROZEN.', 'error');
+      announceA11y('Voice command declined: Card is frozen.');
+      setTimeout(() => {
+        const hud = document.getElementById('voiceAssistantHud');
+        if (hud) hud.style.display = 'none';
+      }, 2500);
+      return;
+    }
+
+    // 2. Enforce session authentication before protected transaction execution
     if (text.includes('fast cash') || text.includes('fastcash')) {
       const match = text.match(/\d+/);
       const amt = match ? parseInt(match[0]) : 2000;
-      if (!atm.isAuthenticated && !atm.isCardInserted) atm.insertCard();
-      setTimeout(() => atm.executeFastCash(amt), 500);
+      if (!atm.isAuthenticated) {
+        if (!atm.isCardInserted) atm.insertCard();
+        audio.speak('Please authenticate with your PIN on the keypad first.');
+        showToast('Please enter your 4-digit PIN to authorize fast cash.', 'info');
+      } else {
+        atm.executeFastCash(amt);
+      }
     } else if (text.includes('balance') || text.includes('how much money') || text.includes('inquiry')) {
-      if (!atm.isAuthenticated && !atm.isCardInserted) atm.insertCard();
-      setTimeout(() => {
+      if (!atm.isAuthenticated) {
+        if (!atm.isCardInserted) atm.insertCard();
+        audio.speak('Please authenticate with your PIN on the keypad first.');
+        showToast('Please enter your 4-digit PIN to view balances.', 'info');
+      } else {
         atm.openBalanceScreen();
         const bal = state.data.accounts.checking.balance;
         audio.speak(`Your checking account available balance is ${bal} rupees.`);
-      }, 500);
+      }
     } else if (text.includes('deposit')) {
-      if (!atm.isAuthenticated && !atm.isCardInserted) atm.insertCard();
-      setTimeout(() => atm.openDepositScreen(), 500);
+      if (!atm.isAuthenticated) {
+        if (!atm.isCardInserted) atm.insertCard();
+        audio.speak('Please authenticate with your PIN to make a deposit.');
+        showToast('Please enter your 4-digit PIN to access deposits.', 'info');
+      } else {
+        atm.openDepositScreen();
+      }
     } else if (text.includes('withdraw')) {
-      if (!atm.isAuthenticated && !atm.isCardInserted) atm.insertCard();
-      setTimeout(() => atm.openWithdrawScreen(), 500);
+      if (!atm.isAuthenticated) {
+        if (!atm.isCardInserted) atm.insertCard();
+        audio.speak('Please authenticate with your PIN to withdraw cash.');
+        showToast('Please enter your 4-digit PIN to withdraw cash.', 'info');
+      } else {
+        atm.openWithdrawScreen();
+      }
     } else if (text.includes('statement') || text.includes('recent')) {
-      if (!atm.isAuthenticated && !atm.isCardInserted) atm.insertCard();
-      setTimeout(() => atm.openStatementScreen(), 500);
+      if (!atm.isAuthenticated) {
+        if (!atm.isCardInserted) atm.insertCard();
+        audio.speak('Please authenticate with your PIN to view your mini statement.');
+        showToast('Please enter your 4-digit PIN to view your statement.', 'info');
+      } else {
+        atm.openStatementScreen();
+      }
     } else if (text.includes('eject') || text.includes('exit') || text.includes('cancel')) {
-      atm.ejectCard();
+      atm.ejectCard('Voice Command: Session ended by customer.');
     } else if (text.includes('face') || text.includes('biometric') || text.includes('scan')) {
       atm.startFaceLogin();
     } else if (text.includes('cardless') || text.includes('qr') || text.includes('digital rupee')) {
@@ -3457,14 +4264,19 @@ class VoiceCommandController {
     } else if (text.includes('cctv') || text.includes('camera')) {
       atm.toggleCctvMonitor();
     } else if (text.includes('pin') || text.includes('change')) {
-      if (!atm.isAuthenticated && !atm.isCardInserted) atm.insertCard();
-      setTimeout(() => atm.openPinChangeScreen(), 500);
+      if (!atm.isAuthenticated) {
+        if (!atm.isCardInserted) atm.insertCard();
+        audio.speak('Please authenticate with your current PIN first.');
+        showToast('Please enter your 4-digit PIN first.', 'info');
+      } else {
+        atm.openPinChangeScreen();
+      }
     } else if (text.includes('receipt') || text.includes('print')) {
       atm.printLastTransactionReceipt();
     } else if (text.includes('vault') || text.includes('diagnostic')) {
       openDiagnosticsModal();
     } else {
-      audio.speak(`Command not recognized. Showing ATM menu.`);
+      audio.speak('Command not recognized. Showing ATM menu.');
     }
 
     setTimeout(() => {

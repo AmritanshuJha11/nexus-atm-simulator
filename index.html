@@ -1323,10 +1323,14 @@
                 <div class="mag-stripe"></div>
                 <div class="card-cvv-strip">
                   <span class="sig-line">Authorized Signature</span>
-                  <div class="cvv-box" id="cardDisplayCvv">842</div>
+                  <div class="cvv-box-wrapper">
+                    <div class="cvv-box" id="cardDisplayCvv" aria-label="Simulated Card CVV">•••</div>
+                    <span class="cvv-mini-badge" id="cardCvvMiniCountdown" style="display:none;" aria-live="polite">30s</span>
+                  </div>
                 </div>
                 <div class="card-back-disclaimer">
-                  This hypothetical debit card is issued by Nexus Bank pursuant to license. For customer service, call 1-800-NEXUS-ATM. Use in ATM simulator.
+                  <span class="badge-demo-cvv"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> SIMULATED DEMO CARD</span><br>
+                  This educational card cannot authorize real payments. Temporary CVVs are generated in browser memory and expire after 30 seconds.
                 </div>
                 <div class="card-hologram"></div>
               </div>
@@ -1338,22 +1342,49 @@
           <div class="card-management-controls">
             
             <div class="card-action-btns">
-              <button class="btn-primary-atm" id="insertSelectedCardBtn">
-                <i class="fa-solid fa-arrow-right-to-bracket"></i> Insert Card into ATM
+              <button class="btn-primary-atm" id="insertSelectedCardBtn" aria-label="Insert Selected Card into ATM">
+                <i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i> Insert Card into ATM
               </button>
-              <button class="btn-secondary-atm" id="ejectCardManualBtn">
-                <i class="fa-solid fa-eject"></i> Eject from ATM
+              <button class="btn-secondary-atm" id="ejectCardManualBtn" aria-label="Eject Card from ATM">
+                <i class="fa-solid fa-eject" aria-hidden="true"></i> Eject from ATM
               </button>
+            </div>
+
+            <!-- Virtual Card CVV Generator Panel -->
+            <div class="cvv-generator-panel">
+              <div class="cvv-generator-header">
+                <div class="cvv-gen-title">
+                  <i class="fa-solid fa-key" aria-hidden="true"></i>
+                  <span>Simulated Dynamic CVV</span>
+                </div>
+                <span class="cvv-state-pill masked" id="cvvStatePill" aria-live="polite">MASKED</span>
+              </div>
+              <p class="cvv-gen-desc">
+                Generate a temporary 3-digit simulated CVV using Web Crypto. Stored only in transient memory; automatically expires in 30s.
+              </p>
+              <div class="cvv-gen-actions">
+                <button type="button" class="btn-generate-cvv" id="btnRevealCvv" aria-label="Generate or Reveal Temporary Simulated CVV">
+                  <i class="fa-solid fa-eye" aria-hidden="true"></i> <span>Reveal Simulated CVV</span>
+                </button>
+                <div class="cvv-timer-display" id="cvvTimerDisplay" style="display: none;" aria-live="polite">
+                  <i class="fa-solid fa-clock" aria-hidden="true"></i> <span id="cvvSecondsRemaining">30s</span>
+                </div>
+              </div>
             </div>
 
             <!-- Card Security Toggles -->
             <div class="card-security-toggles">
               <div class="toggle-row">
-                <span class="toggle-info">
-                  <i class="fa-solid fa-snowflake"></i> Freeze / Lock Card
-                </span>
-                <label class="switch">
-                  <input type="checkbox" id="freezeCardToggle">
+                <div class="toggle-info-col">
+                  <span class="toggle-info">
+                    <i class="fa-solid fa-snowflake" aria-hidden="true"></i> Freeze / Lock Card
+                  </span>
+                  <span class="card-freeze-status-badge active" id="freezeStatusBadge" aria-live="polite">
+                    <i class="fa-solid fa-shield-check" id="freezeStatusIcon" aria-hidden="true"></i> <span id="freezeStatusText">OPERATIONAL</span>
+                  </span>
+                </div>
+                <label class="switch" for="freezeCardToggle">
+                  <input type="checkbox" id="freezeCardToggle" role="switch" aria-checked="false" aria-label="Toggle Card Freeze / Lock">
                   <span class="slider round"></span>
                 </label>
               </div>
@@ -2252,8 +2283,80 @@
   <!-- Audio Synthesizer Status Toast Notification -->
   <div class="toast-container" id="toastContainer"></div>
 
+  <!-- Global Accessibility Screen Reader Live Announcer -->
+  <div id="globalA11yAnnouncer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Inactivity Warning Modal (Milestone 3 Security Integration) -->
+  <div class="modal-overlay" id="inactivityWarningModal" role="dialog" aria-modal="true" aria-labelledby="inactivityModalTitle" aria-describedby="inactivityModalDesc">
+    <div class="modal-card inactivity-warning-card">
+      <div class="modal-header warning-header">
+        <div class="modal-title">
+          <i class="fa-solid fa-triangle-exclamation text-warning" aria-hidden="true"></i>
+          <h3 id="inactivityModalTitle">ATM Session Inactivity Warning</h3>
+        </div>
+      </div>
+      <div class="modal-body text-center">
+        <p id="inactivityModalDesc" class="inactivity-warning-text">
+          Are you still there? Your ATM session has been inactive. For your protection, this session will expire shortly.
+        </p>
+        <div class="inactivity-countdown-box">
+          <div class="inactivity-circle-pulse">
+            <span class="countdown-val" id="inactivityCountdownSec">15</span>
+            <span class="countdown-label">SECONDS</span>
+          </div>
+        </div>
+        <p class="inactivity-sub-text">
+          Interact with the screen, press any key, or click continue to keep your session open.
+        </p>
+      </div>
+      <div class="modal-footer inactivity-actions">
+        <button type="button" class="btn-primary-atm" id="btnContinueSession" aria-label="Continue Active ATM Session">
+          <i class="fa-solid fa-hand" aria-hidden="true"></i> Continue Session
+        </button>
+        <button type="button" class="btn-secondary-atm" id="btnCancelSessionNow" aria-label="Eject Card and End Session Immediately">
+          <i class="fa-solid fa-eject" aria-hidden="true"></i> Eject & Exit Now
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Simulated CVV Reveal Auth Modal (Milestone 3 PIN Verification) -->
+  <div class="modal-overlay" id="cvvAuthModal" role="dialog" aria-modal="true" aria-labelledby="cvvModalTitle" aria-describedby="cvvModalDesc">
+    <div class="modal-card cvv-auth-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fa-solid fa-shield-keyhole text-cyan" aria-hidden="true"></i>
+          <h3 id="cvvModalTitle">Authenticate to Reveal Simulated CVV</h3>
+        </div>
+        <button type="button" class="modal-close-btn" id="btnCloseCvvAuthModal" aria-label="Close CVV Authentication Dialog">
+          <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p id="cvvModalDesc" class="cvv-auth-desc">
+          To generate and reveal a temporary simulated 3-digit CVV for <strong id="cvvAuthCardholder">Cardholder</strong>, please verify with your 4-digit card security PIN.
+        </p>
+        <div class="cvv-pin-field-group">
+          <label for="cvvAuthPinInput"><i class="fa-solid fa-lock" aria-hidden="true"></i> Enter 4-Digit Card PIN:</label>
+          <input type="password" id="cvvAuthPinInput" maxlength="4" placeholder="••••" pattern="[0-9]*" inputmode="numeric" class="cvv-pin-input" autocomplete="off">
+          <span class="cvv-pin-error" id="cvvAuthPinError" style="display:none;" aria-live="assertive"></span>
+        </div>
+        <div class="cvv-disclaimer-box">
+          <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+          <span>This is an educational banking simulation. The generated CVV is temporary, stored strictly in browser memory for 30s, and is never written to persistent storage.</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary-atm" id="btnCancelCvvAuth">Cancel</button>
+        <button type="button" class="btn-primary-atm" id="btnConfirmCvvAuth">
+          <i class="fa-solid fa-key" aria-hidden="true"></i> Verify & Reveal CVV
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Application Logic -->
-  <script src="app.js?v=20261016_biometrics_v3"></script>
+  <script src="app.js?v=20261016_milestone3"></script>
 </body>
 </html>
 
