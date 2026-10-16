@@ -2382,7 +2382,12 @@ function handleOpenAccountSubmit(e) {
 // =============================================================================
 class ProfileController {
   constructor() {
-    this.currentProfile = localStorage.getItem('nexus_atm_profile') || 'user';
+    try {
+      const saved = localStorage.getItem('nexus_atm_profile');
+      this.currentProfile = (saved === 'official') ? 'official' : 'user';
+    } catch (e) {
+      this.currentProfile = 'user';
+    }
     this.officialPasscodes = ['admin1234', 'nexus@admin', '9900', '1234', 'admin'];
     this.failedAttempts = 0;
   }
@@ -2392,8 +2397,12 @@ class ProfileController {
   }
 
   setProfile(profile) {
-    this.currentProfile = profile;
-    localStorage.setItem('nexus_atm_profile', profile);
+    this.currentProfile = (profile === 'official') ? 'official' : 'user';
+    try {
+      localStorage.setItem('nexus_atm_profile', this.currentProfile);
+    } catch (e) {
+      console.warn('Storage save failed:', e);
+    }
     this.applyProfileUI();
   }
 
@@ -2452,7 +2461,8 @@ class ProfileController {
     let totalWithdrawals = 0;
     let withdrawCount = 0;
 
-    (state.data.transactions || []).forEach(tx => {
+    const txs = (state && state.data && Array.isArray(state.data.transactions)) ? state.data.transactions : [];
+    txs.forEach(tx => {
       if (tx.type === 'deposit') {
         totalDeposits += (parseFloat(tx.amount) || 0);
         depositCount++;
@@ -2462,7 +2472,7 @@ class ProfileController {
       }
     });
 
-    const c = state.data.cassettes || { 500: 0, 200: 0, 100: 0, 50: 0 };
+    const c = (state && state.data && state.data.cassettes) ? state.data.cassettes : { 500: 1840, 200: 1450, 100: 1920, 50: 980 };
     const vaultTotal = (c[500] * 500) + (c[200] * 200) + (c[100] * 100) + (c[50] * 50);
     const netCashFlow = totalDeposits - totalWithdrawals;
 
@@ -2477,7 +2487,8 @@ class ProfileController {
   }
 
   applyProfileUI() {
-    const isOff = this.isOfficial();
+    try {
+      const isOff = this.isOfficial();
 
     // Toggle button active states
     document.getElementById('profileUserBtn')?.classList.toggle('active', !isOff);
@@ -2558,6 +2569,9 @@ class ProfileController {
     // Customer Security Guide (Shown in User profile, hidden in Official profile)
     const guideBox = document.getElementById('customerSecurityGuideBox');
     if (guideBox) guideBox.style.display = isOff ? 'none' : 'block';
+    } catch (err) {
+      console.error('Error applying Profile UI:', err);
+    }
   }
 }
 
@@ -3389,21 +3403,34 @@ function showToast(message, type = 'info') {
 // =============================================================================
 // 9. BOOTSTRAP APPLICATION
 // =============================================================================
-document.addEventListener('DOMContentLoaded', () => {
-  // Load saved theme if any
-  const savedTheme = localStorage.getItem('nexus_atm_theme') || 'dark';
-  document.documentElement.setAttribute('data-theme', savedTheme);
-  document.querySelectorAll('.theme-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('data-theme') === savedTheme);
-  });
+function bootstrapApplication() {
+  try {
+    // Load saved theme if any
+    const savedTheme = localStorage.getItem('nexus_atm_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', savedTheme);
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-theme') === savedTheme);
+    });
 
-  // Init currency in select
-  const currSelect = document.getElementById('currencySelect');
-  if (currSelect) currSelect.value = state.data.currency;
+    // Init currency in select
+    const currSelect = document.getElementById('currencySelect');
+    if (currSelect && state && state.data) currSelect.value = state.data.currency;
 
-  // Initialize UI & Event Listeners
-  updateDashboardUI();
-  updateDiagnosticsUI();
-  initEventListeners();
-  profileController.applyProfileUI();
-});
+    // Initialize UI & Event Listeners
+    updateDashboardUI();
+    updateDiagnosticsUI();
+    initEventListeners();
+    if (typeof profileController !== 'undefined') {
+      profileController.applyProfileUI();
+    }
+  } catch (err) {
+    console.error('Error during Nexus ATM bootstrap:', err);
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrapApplication);
+} else {
+  bootstrapApplication();
+}
+
