@@ -20,7 +20,7 @@
   <link rel="apple-touch-icon" href="assets/nexus-icon-dark.png">
   <meta name="theme-color" content="#080c14">
   
-  <link rel="stylesheet" href="style.css?v=20261016_dual_profile">
+  <link rel="stylesheet" href="style.css?v=20261016_biometrics_v3">
 </head>
 <body>
   <!-- Ambient background glow elements -->
@@ -2151,37 +2151,100 @@
           </div>
         </div>
 
-        <p class="auth-instruction">
-          Please authenticate with your Bank Official Passcode or Master Security PIN to view vault cash reserves, cumulative deposits/withdrawals, cassette telemetry, and audit logs.
-        </p>
+        <!-- Official Authentication Mode Tabs -->
+        <div class="official-auth-tabs">
+          <button type="button" class="official-tab-btn active" id="tabBtnPasscode">
+            <i class="fa-solid fa-key"></i> Passcode / Master PIN
+          </button>
+          <button type="button" class="official-tab-btn" id="tabBtnBiometric">
+            <i class="fa-solid fa-face-viewfinder"></i> Biometric Face Scan
+          </button>
+        </div>
 
-        <form id="officialAuthForm" class="card-form">
-          <div class="form-group">
-            <label for="officialPasswordInput"><i class="fa-solid fa-key"></i> Bank Official Passcode / Security PIN:</label>
-            <div class="password-input-wrapper">
-              <input type="password" id="officialPasswordInput" class="form-input" placeholder="Enter official passcode (e.g. admin1234 or 9900)" required autocomplete="current-password">
-              <button type="button" class="btn-toggle-pwd" id="toggleOfficialPwdVisibilityBtn" title="Show / Hide Passcode">
-                <i class="fa-solid fa-eye" id="toggleOfficialPwdIcon"></i>
+        <!-- Tab 1: Passcode Form Pane -->
+        <div class="official-auth-tab-content active" id="officialPasscodeTabPane">
+          <p class="auth-instruction">
+            Authenticate with your Bank Official Passcode or Master Security PIN to view vault cash reserves, cumulative deposits/withdrawals, cassette telemetry, and audit logs.
+          </p>
+
+          <form id="officialAuthForm" class="card-form">
+            <div class="form-group">
+              <label for="officialPasswordInput"><i class="fa-solid fa-key"></i> Bank Official Passcode / Security PIN:</label>
+              <div class="password-input-wrapper">
+                <input type="password" id="officialPasswordInput" class="form-input" placeholder="Enter official passcode (e.g. admin1234 or 9900)" required autocomplete="current-password">
+                <button type="button" class="btn-toggle-pwd" id="toggleOfficialPwdVisibilityBtn" title="Show / Hide Passcode">
+                  <i class="fa-solid fa-eye" id="toggleOfficialPwdIcon"></i>
+                </button>
+              </div>
+              <div class="auth-demo-hint">
+                <i class="fa-solid fa-circle-info"></i> Official Credentials: <strong id="demoOfficialPwdHint">admin1234</strong> or <strong id="demoOfficialPinHint">9900</strong>
+              </div>
+            </div>
+
+            <div class="modal-form-actions">
+              <button type="button" class="btn-cancel" id="cancelOfficialAuthBtn">Cancel</button>
+              <button type="submit" class="btn-submit" id="submitOfficialAuthBtn">
+                <i class="fa-solid fa-unlock-keyhole"></i> Authorize & Enter
               </button>
             </div>
-            <div class="auth-demo-hint">
-              <i class="fa-solid fa-circle-info"></i> Official Credentials: <strong id="demoOfficialPwdHint">admin1234</strong> or <strong id="demoOfficialPinHint">9900</strong>
+          </form>
+        </div>
+
+        <!-- Tab 2: Live Biometric Face Scan Pane -->
+        <div class="official-auth-tab-content" id="officialBiometricTabPane" style="display: none;">
+          <p class="auth-instruction">
+            Align your face with the optical scanner target for automated Level-4 Officer Biometric Facial Recognition & KYC match.
+          </p>
+
+          <div class="official-bio-camera-box">
+            <div class="official-bio-cam-viewport" id="officialBioCamViewport">
+              <video id="officialBioVideo" autoplay playsinline muted></video>
+              
+              <!-- High-Tech Officer Scan HUD -->
+              <div class="official-cam-hud" id="officialCamHud">
+                <div class="official-hud-reticle">
+                  <span class="hud-corner top-l"></span>
+                  <span class="hud-corner top-r"></span>
+                  <span class="hud-corner bot-l"></span>
+                  <span class="hud-corner bot-r"></span>
+                  <div class="official-hud-target">
+                    <div class="official-laser-beam"></div>
+                  </div>
+                </div>
+                <div class="official-hud-tag" id="officialHudStatusTag">
+                  <i class="fa-solid fa-shield-halved"></i> LEVEL-4 OFFICER CLEARANCE • 256-BIT EMV
+                </div>
+              </div>
+
+              <!-- Success Card Overlay -->
+              <div class="official-bio-success-overlay" id="officialBioSuccessOverlay" style="display: none;">
+                <div class="match-icon-circle green"><i class="fa-solid fa-shield-check"></i></div>
+                <h4>OFFICER VERIFIED</h4>
+                <p>Chief Custodian Clearance Approved</p>
+                <div class="match-badge green">BIOMETRIC 99.9% CONFIDENCE MATCH</div>
+              </div>
+            </div>
+
+            <div class="official-bio-scan-meta">
+              <div class="bio-meta-row">
+                <span id="officialBioStepText"><i class="fa-solid fa-camera"></i> Camera Standby • Click Below to Scan</span>
+                <strong id="officialBioPercentText">0%</strong>
+              </div>
+              <div class="official-bio-progress-bar">
+                <div class="official-bio-progress-fill" id="officialBioProgressFill" style="width: 0%;"></div>
+              </div>
+            </div>
+
+            <div class="official-bio-controls">
+              <button type="button" class="btn-start-officer-scan" id="btnStartOfficerBioScan">
+                <i class="fa-solid fa-expand"></i> Start Optical Officer Face Scan
+              </button>
+              <button type="button" class="btn-stop-officer-scan" id="btnCancelOfficerBioScan" style="display: none;">
+                <i class="fa-solid fa-stop"></i> Cancel Scan
+              </button>
             </div>
           </div>
-
-          <div class="auth-quick-actions">
-            <button type="button" class="btn-biometric-bypass" id="quickOfficialBypassBtn" title="Instant Biometric Officer Verification">
-              <i class="fa-solid fa-fingerprint"></i> Quick Biometric Official Pass
-            </button>
-          </div>
-
-          <div class="modal-form-actions">
-            <button type="button" class="btn-cancel" id="cancelOfficialAuthBtn">Cancel</button>
-            <button type="submit" class="btn-submit" id="submitOfficialAuthBtn">
-              <i class="fa-solid fa-unlock-keyhole"></i> Authorize & Enter
-            </button>
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   </div>
@@ -2190,7 +2253,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Application Logic -->
-  <script src="app.js?v=20261016_dual_profile_v2"></script>
+  <script src="app.js?v=20261016_biometrics_v3"></script>
 </body>
 </html>
 

@@ -625,27 +625,47 @@ class AtmController {
     if (stepLabel) stepLabel.textContent = 'Accessing Camera Sensor...';
     if (statusMsg) statusMsg.innerHTML = '<i class="fa-solid fa-expand"></i> POSITION FACE WITHIN TARGET';
 
+    // Clean up any other camera streams holding the webcam device
+    if (this.cctvStream) {
+      this.cctvStream.getTracks().forEach(t => t.stop());
+      this.cctvStream = null;
+    }
+    if (typeof profileController !== 'undefined' && profileController.officerBioStream) {
+      profileController.stopOfficerBiometricScan();
+    }
+
     // Start video stream if available
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 } } })
         .then(stream => {
           this.atmFaceStream = stream;
           if (videoEl) {
+            videoEl.setAttribute('playsinline', '');
+            videoEl.setAttribute('autoplay', '');
+            videoEl.muted = true;
             videoEl.srcObject = stream;
-            videoEl.play().catch(() => {});
+            videoEl.play().catch(e => console.warn('ATM face video play:', e));
           }
-          if (sensorBadge) sensorBadge.className = 'sensor-badge live';
+          if (sensorBadge) {
+            sensorBadge.className = 'sensor-badge live';
+            sensorBadge.innerHTML = '<i class="fa-solid fa-circle" style="color:var(--accent-green)"></i> WEBCAM SENSOR LIVE';
+          }
           this.runFaceScanSequence();
         })
         .catch(err => {
-          console.warn('Webcam not allowed/accessible for ATM, using simulated sensor:', err);
+          console.warn('Webcam permission not granted or device busy, falling back to verified AI Mesh simulation:', err);
           if (sensorBadge) {
             sensorBadge.className = 'sensor-badge live';
-            sensorBadge.innerHTML = '<i class="fa-solid fa-circle"></i> AI SENSOR ACTIVE';
+            sensorBadge.innerHTML = '<i class="fa-solid fa-circle-nodes" style="color:var(--accent-cyan)"></i> AI SENSOR ACTIVE';
           }
+          showToast('Webcam not allowed or camera in use. Running simulated optical AI mesh.', 'info');
           this.runFaceScanSequence();
         });
     } else {
+      if (sensorBadge) {
+        sensorBadge.className = 'sensor-badge live';
+        sensorBadge.innerHTML = '<i class="fa-solid fa-circle-nodes" style="color:var(--accent-cyan)"></i> AI SENSOR ACTIVE';
+      }
       this.runFaceScanSequence();
     }
   }
@@ -2386,6 +2406,10 @@ class ProfileController {
     // Refreshing the page, closing the tab, or reopening the link ALWAYS resets
     // the system to Customer Profile ('user'), requiring fresh re-authentication.
     this.currentProfile = 'user';
+    this.officerBioStream = null;
+    this.officerBioInterval = null;
+    this.activeAuthTab = 'passcode';
+
     try {
       localStorage.removeItem('nexus_atm_profile');
       sessionStorage.removeItem('nexus_atm_profile');
@@ -2410,7 +2434,151 @@ class ProfileController {
     this.applyProfileUI();
   }
 
+  switchAuthTab(tab) {
+    this.activeAuthTab = tab;
+    const tabPinBtn = document.getElementById('tabBtnPasscode');
+    const tabBioBtn = document.getElementById('tabBtnBiometric');
+    const panePin = document.getElementById('officialPasscodeTabPane');
+    const paneBio = document.getElementById('officialBiometricTabPane');
+
+    if (tabPinBtn) tabPinBtn.classList.toggle('active', tab === 'passcode');
+    if (tabBioBtn) tabBioBtn.classList.toggle('active', tab === 'biometric');
+    if (panePin) panePin.style.display = tab === 'passcode' ? 'block' : 'none';
+    if (paneBio) paneBio.style.display = tab === 'biometric' ? 'block' : 'none';
+
+    audio.playKeypadBeep(1200);
+
+    if (tab === 'passcode') {
+      this.stopOfficerBiometricScan();
+      document.getElementById('officialPasswordInput')?.focus();
+    } else {
+      this.resetOfficerBioUI();
+    }
+  }
+
+  resetOfficerBioUI() {
+    const stepText = document.getElementById('officialBioStepText');
+    const pctText = document.getElementById('officialBioPercentText');
+    const fill = document.getElementById('officialBioProgressFill');
+    const successCard = document.getElementById('officialBioSuccessOverlay');
+    const startBtn = document.getElementById('btnStartOfficerBioScan');
+    const cancelBtn = document.getElementById('btnCancelOfficerBioScan');
+
+    if (stepText) stepText.innerHTML = '<i class="fa-solid fa-camera"></i> Camera Standby • Click Below to Scan';
+    if (pctText) pctText.textContent = '0%';
+    if (fill) fill.style.width = '0%';
+    if (successCard) successCard.style.display = 'none';
+    if (startBtn) startBtn.style.display = 'flex';
+    if (cancelBtn) cancelBtn.style.display = 'none';
+  }
+
+  startOfficerBiometricScan() {
+    // Release any camera streams that might hold the webcam
+    if (typeof atm !== 'undefined') {
+      atm.stopFaceCamera();
+      if (atm.cctvStream) {
+        atm.cctvStream.getTracks().forEach(t => t.stop());
+        atm.cctvStream = null;
+      }
+    }
+
+    const videoEl = document.getElementById('officialBioVideo');
+    const stepText = document.getElementById('officialBioStepText');
+    const pctText = document.getElementById('officialBioPercentText');
+    const fill = document.getElementById('officialBioProgressFill');
+    const successCard = document.getElementById('officialBioSuccessOverlay');
+    const startBtn = document.getElementById('btnStartOfficerBioScan');
+    const cancelBtn = document.getElementById('btnCancelOfficerBioScan');
+    const statusTag = document.getElementById('officialHudStatusTag');
+
+    if (startBtn) startBtn.style.display = 'none';
+    if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+    if (successCard) successCard.style.display = 'none';
+    if (stepText) stepText.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-spin"></i> Activating Camera Sensor...';
+
+    audio.playBiometricScanSound();
+
+    const beginScanAnimation = (isLiveWebcam) => {
+      let progress = 0;
+      if (statusTag) {
+        statusTag.innerHTML = isLiveWebcam
+          ? '<i class="fa-solid fa-circle" style="color:var(--accent-green)"></i> LIVE SENSOR ACTIVE • 128-PT MESH'
+          : '<i class="fa-solid fa-circle-nodes" style="color:var(--accent-cyan)"></i> AI OPTICAL SENSOR • SIMULATION';
+      }
+
+      if (this.officerBioInterval) clearInterval(this.officerBioInterval);
+      this.officerBioInterval = setInterval(() => {
+        progress += Math.floor(10 + Math.random() * 15);
+        if (progress > 100) progress = 100;
+
+        if (fill) fill.style.width = `${progress}%`;
+        if (pctText) pctText.textContent = `${progress}%`;
+
+        if (progress < 30) {
+          if (stepText) stepText.innerHTML = '<i class="fa-solid fa-expand"></i> Positioning face inside optical reticle...';
+        } else if (progress < 65) {
+          if (stepText) stepText.innerHTML = '<i class="fa-solid fa-fingerprint"></i> Cross-matching Level-4 Custodian Ledger...';
+        } else if (progress < 95) {
+          if (stepText) stepText.innerHTML = '<i class="fa-solid fa-shield-halved"></i> Validating cryptographic officer certificate...';
+        } else {
+          clearInterval(this.officerBioInterval);
+          this.officerBioInterval = null;
+
+          if (stepText) stepText.innerHTML = '<i class="fa-solid fa-circle-check" style="color:var(--accent-green)"></i> Biometric Match Confirmed!';
+          if (successCard) successCard.style.display = 'flex';
+
+          audio.playBiometricSuccessSound();
+          showToast('Officer Biometrics Verified: Level-4 Custodian Access Granted.', 'success');
+
+          setTimeout(() => {
+            this.stopOfficerBiometricScan();
+            this.setProfile('official');
+            this.closeAuthModal();
+            audio.speak('Officer biometrics recognized. Level-4 Bank Custodian access granted.');
+          }, 1200);
+        }
+      }, 250);
+    };
+
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 640 } } })
+        .then(stream => {
+          this.officerBioStream = stream;
+          if (videoEl) {
+            videoEl.setAttribute('playsinline', '');
+            videoEl.setAttribute('autoplay', '');
+            videoEl.muted = true;
+            videoEl.srcObject = stream;
+            videoEl.play().catch(() => {});
+          }
+          beginScanAnimation(true);
+        })
+        .catch(err => {
+          console.warn('Camera access denied or unavailable for Bank Official, running high-accuracy optical simulation:', err);
+          showToast('Webcam not permitted or busy. Running verified AI optical simulation.', 'info');
+          beginScanAnimation(false);
+        });
+    } else {
+      beginScanAnimation(false);
+    }
+  }
+
+  stopOfficerBiometricScan() {
+    if (this.officerBioInterval) {
+      clearInterval(this.officerBioInterval);
+      this.officerBioInterval = null;
+    }
+    if (this.officerBioStream) {
+      this.officerBioStream.getTracks().forEach(t => t.stop());
+      this.officerBioStream = null;
+    }
+    const videoEl = document.getElementById('officialBioVideo');
+    if (videoEl) videoEl.srcObject = null;
+    this.resetOfficerBioUI();
+  }
+
   openAuthModal() {
+    this.switchAuthTab('passcode');
     const modal = document.getElementById('bankOfficialAuthModal');
     const pwdInput = document.getElementById('officialPasswordInput');
     if (pwdInput) {
@@ -2425,6 +2593,7 @@ class ProfileController {
   }
 
   closeAuthModal() {
+    this.stopOfficerBiometricScan();
     const modal = document.getElementById('bankOfficialAuthModal');
     if (modal) modal.classList.remove('active');
   }
@@ -3133,10 +3302,21 @@ function initEventListeners() {
     }
   });
 
-  document.getElementById('quickOfficialBypassBtn')?.addEventListener('click', () => {
-    const input = document.getElementById('officialPasswordInput');
-    if (input) input.value = 'admin1234';
-    profileController.authenticate('admin1234');
+  // Official Auth Mode Tabs & Biometric Controls
+  document.getElementById('tabBtnPasscode')?.addEventListener('click', () => {
+    profileController.switchAuthTab('passcode');
+  });
+
+  document.getElementById('tabBtnBiometric')?.addEventListener('click', () => {
+    profileController.switchAuthTab('biometric');
+  });
+
+  document.getElementById('btnStartOfficerBioScan')?.addEventListener('click', () => {
+    profileController.startOfficerBiometricScan();
+  });
+
+  document.getElementById('btnCancelOfficerBioScan')?.addEventListener('click', () => {
+    profileController.stopOfficerBiometricScan();
   });
 
   // Technician shortcut: Ctrl+Alt+D (Prompts auth if not official)

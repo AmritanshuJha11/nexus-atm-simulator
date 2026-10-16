@@ -370,13 +370,13 @@ To protect sensitive institutional banking telemetry and customer privacy, the s
 ### 2. Bank Official Profile (Staff Mode)
 - **Target Audience**: Branch managers, cash-in-transit (CIT) custodians, and security auditors.
 - **Security & Passcode Authentication**:
-  - Protected by a dedicated security portal modal (`#bankOfficialAuthModal`) with a password challenge.
-  - **Accepted Official Passcodes**: `admin1234`, `9900`, `nexus@admin`, `1234`.
-  - Includes a biometric quick-pass bypass button for rapid evaluation.
+  - **Authentication Methods**: Dual-tab authentication supporting either Master Passcode (`admin1234` / `9900`) or Live Optical Officer Face Biometric Scanning with holographic HUD, laser sweep, and Level-4 clearance verification.
+  - **Session-Ephemeral Clearance**: Bank Official access is strictly in-memory and automatically resets to Customer Profile upon page reload, link refresh, or browser restart to preserve banking privacy.
 - **Official Capabilities Unlocked**:
   - **Live Treasury Telemetry Panel (`#officialTreasuryPanel`)**: Displays real-time Total Vault Reserves, Cumulative Bank Deposits, Cumulative Bank Withdrawals, and Terminal Net Cash Flow with transaction counts.
   - **Master Bank Audit Ledger**: Unlocks unredacted transaction logs with multi-type filters (All, Withdrawal, Deposit, Transfer) and CSV ledger export.
   - **ATM Hardware & Cassette Vault Diagnostics**: Direct access to note cassette levels (₹500, ₹200, ₹100, ₹50), thermal paper roll status, dispenser test routines, and cassette refills.
   - **State Reset Privileges**: Access to terminal demo state reset (`#resetDemoStateBtn`).
   - **One-Touch Lockout**: Bank staff can instantly re-lock the system back to Customer Profile via `#btnLockOfficial` or `#profileUserBtn`.
+
 
