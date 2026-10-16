@@ -2382,11 +2382,15 @@ function handleOpenAccountSubmit(e) {
 // =============================================================================
 class ProfileController {
   constructor() {
+    // SECURITY POLICY: Bank Official mode is strictly ephemeral and in-memory.
+    // Refreshing the page, closing the tab, or reopening the link ALWAYS resets
+    // the system to Customer Profile ('user'), requiring fresh re-authentication.
+    this.currentProfile = 'user';
     try {
-      const saved = localStorage.getItem('nexus_atm_profile');
-      this.currentProfile = (saved === 'official') ? 'official' : 'user';
+      localStorage.removeItem('nexus_atm_profile');
+      sessionStorage.removeItem('nexus_atm_profile');
     } catch (e) {
-      this.currentProfile = 'user';
+      // ignore storage access errors in private browsing modes
     }
     this.officialPasscodes = ['admin1234', 'nexus@admin', '9900', '1234', 'admin'];
     this.failedAttempts = 0;
@@ -2398,11 +2402,11 @@ class ProfileController {
 
   setProfile(profile) {
     this.currentProfile = (profile === 'official') ? 'official' : 'user';
+    // Ensure storage is strictly wiped so any browser reload immediately reverts to Customer profile
     try {
-      localStorage.setItem('nexus_atm_profile', this.currentProfile);
-    } catch (e) {
-      console.warn('Storage save failed:', e);
-    }
+      localStorage.removeItem('nexus_atm_profile');
+      sessionStorage.removeItem('nexus_atm_profile');
+    } catch (e) {}
     this.applyProfileUI();
   }
 
@@ -3421,7 +3425,7 @@ function bootstrapApplication() {
     updateDiagnosticsUI();
     initEventListeners();
     if (typeof profileController !== 'undefined') {
-      profileController.applyProfileUI();
+      profileController.setProfile('user');
     }
   } catch (err) {
     console.error('Error during Nexus ATM bootstrap:', err);
