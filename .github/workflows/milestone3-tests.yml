@@ -1,0 +1,31 @@
+name: Milestone 3 security regression tests
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "chore/**"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  milestone-3-tests:
+    name: Run Milestone 3 regression suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run security and compatibility tests
+        run: node --test tests/milestone3.test.js
