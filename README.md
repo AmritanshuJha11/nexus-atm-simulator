@@ -1,6 +1,18 @@
 # NexusBank ATM & Digital Banking Simulator
 
-A hyper-realistic, interactive ATM Kiosk and Digital Banking web application built with modern web technologies, AI Biometrics, and synthesized Web Audio API acoustics.
+A hyper-realistic, interactive ATM Kiosk and Digital Banking web application built with HTML5, CSS3, Vanilla JavaScript, AI Biometrics simulation, Web Speech Synthesis, and synthesized Web Audio API acoustics.
+
+---
+
+## 🌐 Live Demo & Quick Access
+
+- **Live Deployment (GitHub Pages):** https://amritanshujha11.github.io/nexus-atm-simulator/
+- **Source Repository:** https://github.com/AmritanshuJha11/nexus-atm-simulator
+- **Milestone 4 Testing & Optimization Report:** [Milestone 4.md](./Milestone%204.md)
+- **Demo Cards & PINs:**
+  - **John Doe (Obsidian Platinum • Checking `•••• 7819`):** PIN `1234`
+  - **Sarah Connor (Titanium Gold • Savings `•••• 9204`):** PIN `4321`
+  - *(Note: State is persisted client-side in `LocalStorage`; use **Reset Demo** inside the dashboard at any time to restore factory defaults.)*
 
 ---
 
@@ -89,14 +101,59 @@ A hyper-realistic, interactive ATM Kiosk and Digital Banking web application bui
 
 ---
 
-## 🚀 How to Run Locally
+## 🚀 Setup & Running Locally
 
-1. Open `index.html` directly in any modern web browser (Chrome, Edge, Firefox, Safari).
-2. Or serve it via any static web server:
-   ```bash
-   python -m http.server 3000
-   ```
-3. Visit `http://localhost:3000` to experience the full ATM simulation!ash
-   npx serve .
-   ```
-3. Enjoy the full ATM and banking simulation experience!
+Zero build tools, bundlers, or external npm dependencies are required. Any modern browser (Chrome, Edge, Firefox, or Safari) can run the simulator.
+
+### Prerequisites
+- Any static HTTP server (**Python 3**, **Node.js 18+**, or **VS Code Live Server**). *(Serving over `http://localhost` is recommended over `file://` so Web Audio, Web Speech Synthesis, and webcam KYC permissions work consistently across browsers.)*
+- **Node.js 18+** (optional, only needed to run the automated test suite).
+
+### 1. Clone the Repository
+```bash
+git clone https://github.com/AmritanshuJha11/nexus-atm-simulator.git
+cd nexus-atm-simulator
+```
+
+### 2. Start a Local Web Server
+Choose whichever tool you have installed:
+
+- **Using Python:**
+  ```bash
+  python -m http.server 5500
+  ```
+- **Using Node.js (`serve`):**
+  ```bash
+  npx serve -l 5500 .
+  ```
+- **Using VS Code:** Install the **Live Server** extension, right-click `index.html`, and click **Open with Live Server**.
+
+Then open **http://localhost:5500/** in your browser.
+
+---
+
+## 🧪 Running Automated Tests
+
+All security, input-validation, `LocalStorage` corruption recovery, audio debounce, and CSV export tests run directly using Node's built-in test runner (`node:test`):
+
+```bash
+node --test --test-force-exit tests/milestone3.test.js tests/milestone4.test.js
+```
+
+> Uses only Node's standard library (`node:test`, `node:assert`, `node:vm`) — no `npm install` required.
+
+---
+
+## 📁 Project Structure
+
+```text
+nexus-atm-simulator/
+├── index.html          # ATM kiosk shell, modals, companion wallet & audit UI
+├── style.css           # 3D card styling, themes, compositor animations, responsive rules
+├── app.js              # AudioEngine, InputValidators, StateManager, AtmController & CSV export
+├── assets/             # App icons and visual assets
+├── tests/
+│   ├── milestone3.test.js  # Auth freeze, transient CVV, session timeout & migration tests
+│   └── milestone4.test.js  # Edge cases, corruption recovery, concurrency, audio & CSV tests
+└── Milestone 4.md      # Comprehensive Testing & Optimization Report
+```
