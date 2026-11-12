@@ -11,22 +11,30 @@ class AudioEngine {
     this.ctx = null;
     this.soundEnabled = true;
     this.voiceEnabled = false;
+    this.lastBeepTime = 0;
   }
 
   initContext() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return false;
     if (!this.ctx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AudioContext();
+      this.ctx = new AudioCtx();
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      const p = this.ctx.resume();
+      if (p && typeof p.catch === 'function') p.catch(() => {});
     }
+    return !!this.ctx;
   }
 
   playKeypadBeep(freq = 1200) {
     if (!this.soundEnabled) return;
+    const nowMs = Date.now();
+    // Prevent audio clipping/stacking on rapid keypress mashes
+    if (nowMs - this.lastBeepTime < 25) return;
+    this.lastBeepTime = nowMs;
     try {
-      this.initContext();
+      if (!this.initContext()) return;
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       
@@ -235,14 +243,23 @@ class AudioEngine {
   }
 
   speak(text) {
-    if (!this.voiceEnabled || !('speechSynthesis' in window)) return;
+    if (!this.voiceEnabled || !text) return;
+    if (typeof window === 'undefined' || !('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+      return;
+    }
     try {
+      if (typeof window.speechSynthesis.getVoices === 'function') {
+        // Accessing getVoices defensively; empty array still falls back cleanly without breaking flow
+        window.speechSynthesis.getVoices();
+      }
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
+      const utterance = new SpeechSynthesisUtterance(String(text));
       utterance.rate = 1.05;
       utterance.pitch = 1.0;
       window.speechSynthesis.speak(utterance);
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Speech synthesis unavailable:', e);
+    }
   }
 }
 
@@ -266,6 +283,7 @@ const DEMO_AVATARS = {
 const STORAGE_KEY = 'nexus_atm_state_inr_v1';
 
 const DEFAULT_STATE = {
+  schemaVersion: 1,
   accounts: {
     checking: { name: 'Checking Account', number: '•••• 7819', balance: 48500.00 },
     savings: { name: 'High-Yield Savings', number: '•••• 9204', balance: 124200.50 }
@@ -368,65 +386,270 @@ function announceA11y(message, politeness = 'polite') {
   }, 40);
 }
 
+// =============================================================================
+// 2B. CENTRAL INPUT VALIDATORS & SAFE STORAGE WRAPPER (MILESTONE 4)
+// =============================================================================
+const InputValidators = {
+  parseStrictNumber(raw) {
+    if (typeof raw === 'number') {
+      return Number.isFinite(raw) ? raw : NaN;
+    }
+    const str = String(raw == null ? '' : raw).trim();
+    // Reject empty strings, scientific notation (e.g. 1e5), and non-numeric text
+    if (!str || /[eE]/.test(str) || !/^[+-]?\d+(\.\d+)?$/.test(str)) {
+      return NaN;
+    }
+    const num = Number(str);
+    return Number.isFinite(num) ? num : NaN;
+  },
+
+  validateWithdrawalAmount(raw, multipleOf = 100) {
+    const num = this.parseStrictNumber(raw);
+    if (!Number.isFinite(num) || num <= 0) {
+      return { valid: false, reason: 'Please enter a valid positive amount.' };
+    }
+    if (!Number.isInteger(num)) {
+      return { valid: false, reason: 'Decimals are not allowed for cash withdrawals.' };
+    }
+    if (num > 1000000) {
+      return { valid: false, reason: 'Requested amount exceeds maximum ATM transaction ceiling.' };
+    }
+    if (num % multipleOf !== 0) {
+      return { valid: false, reason: `Amount must be in whole multiples of ₹${multipleOf}.` };
+    }
+    return { valid: true, value: num };
+  },
+
+  validateTransferTarget(rawTarget, ownAccounts = {}) {
+    const target = String(rawTarget == null ? '' : rawTarget).trim();
+    if (!target) {
+      return { valid: false, reason: 'Please enter a recipient account number or UPI ID.' };
+    }
+    const isDigitsAcc = /^\d{6,18}$/.test(target);
+    const isUpiId = /^[a-zA-Z0-9._-]{2,40}@[a-zA-Z0-9.-]{2,30}$/.test(target);
+    if (!isDigitsAcc && !isUpiId) {
+      return { valid: false, reason: 'Enter a valid 6-18 digit account number or UPI ID (e.g. name@upi).' };
+    }
+    const ownDigits = Object.values(ownAccounts || {})
+      .map(acc => String(acc?.number || '').replace(/\D/g, '').replace(/^0+/, ''))
+      .filter(Boolean);
+    const targetDigits = target.replace(/\D/g, '');
+    const normalizedTargetDigits = targetDigits.replace(/^0+/, '');
+    if (targetDigits && ownDigits.some(d => targetDigits === d || normalizedTargetDigits === d)) {
+      return { valid: false, reason: 'Self-transfer to the same account identifier is not allowed.' };
+    }
+    return { valid: true, value: target };
+  },
+
+  validateTransferAmount(raw) {
+    const num = this.parseStrictNumber(raw);
+    if (!Number.isFinite(num) || num <= 0) {
+      return { valid: false, reason: 'Please enter a valid positive transfer amount.' };
+    }
+    if (num > 10000000) {
+      return { valid: false, reason: 'Transfer amount exceeds single-transaction ceiling.' };
+    }
+    return { valid: true, value: Math.round(num * 100) / 100 };
+  },
+
+  validateMemo(rawMemo, maxLength = 80) {
+    const cleaned = String(rawMemo == null ? '' : rawMemo)
+      .replace(/[\r\n\t]+/g, ' ')
+      .trim()
+      .slice(0, maxLength);
+    return { valid: true, value: cleaned };
+  },
+
+  validateCheque(chequeNoRaw, amountRaw) {
+    const chequeNo = String(chequeNoRaw == null ? '' : chequeNoRaw).trim();
+    if (!/^\d{6}$/.test(chequeNo)) {
+      return { valid: false, reason: 'Please enter an exact 6-digit cheque number.' };
+    }
+    const amount = this.parseStrictNumber(amountRaw);
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 10000000) {
+      return { valid: false, reason: 'Please enter a valid cheque amount greater than ₹0.' };
+    }
+    return { valid: true, chequeNo, amount: Math.round(amount * 100) / 100 };
+  },
+
+  validateDepositCounts(countsObj) {
+    const safe = {};
+    let total = 0;
+    for (const denom of [500, 200, 100, 50]) {
+      const rawCount = Number(countsObj && countsObj[denom]);
+      if (!Number.isFinite(rawCount) || rawCount < 0 || !Number.isInteger(rawCount)) {
+        return { valid: false, reason: 'Note counts cannot be negative or fractional.' };
+      }
+      if (rawCount > 10000) {
+        return { valid: false, reason: `Maximum 10,000 notes allowed per ₹${denom} denomination.` };
+      }
+      safe[denom] = rawCount;
+      total += denom * rawCount;
+    }
+    if (total <= 0) {
+      return { valid: false, reason: 'Please insert/count at least one currency note.' };
+    }
+    return { valid: true, counts: safe, total };
+  },
+
+  validatePin(pinRaw, { rejectWeak = false, currentPin = null } = {}) {
+    const pin = String(pinRaw == null ? '' : pinRaw).trim();
+    if (!/^\d{4}$/.test(pin)) {
+      return { valid: false, reason: 'PIN must be exactly 4 numeric digits.' };
+    }
+    if (currentPin !== null && pin === String(currentPin)) {
+      return { valid: false, reason: 'New PIN cannot be the same as your current PIN.' };
+    }
+    if (rejectWeak) {
+      const weakSet = new Set(['0000', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999', '1234', '4321', '0123', '3210']);
+      if (weakSet.has(pin)) {
+        return { valid: false, reason: 'PIN is too predictable (avoid 1111, 1234, or repeated sequences).' };
+      }
+    }
+    return { valid: true, value: pin };
+  }
+};
+
 class StateManager {
   constructor() {
+    this.recoveryWarning = '';
     this.data = this.loadState();
   }
 
+  _cloneDefaultState() {
+    return JSON.parse(JSON.stringify(DEFAULT_STATE));
+  }
+
   loadState() {
+    this.recoveryWarning = '';
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (!parsed.cassettes) {
-          parsed.cassettes = { 500: 1840, 200: 1450, 100: 1920, 50: 980 };
-        }
-        if (typeof parsed.paperRoll === 'undefined') {
-          parsed.paperRoll = 88;
-        }
-
-        // Backward compatibility: ensure accounts exist
-        if (!parsed.accounts || !parsed.accounts.checking) {
-          parsed.accounts = JSON.parse(JSON.stringify(DEFAULT_STATE.accounts));
-        }
-
-        // Backward compatibility: ensure cards array and card.frozen boolean
-        if (Array.isArray(parsed.cards)) {
-          parsed.cards.forEach(c => {
-            c.frozen = !!c.frozen;
-            // Never load transient CVV into persistent state
-            delete c.transientCvv;
-            delete c.tempCvv;
-          });
-        } else {
-          parsed.cards = JSON.parse(JSON.stringify(DEFAULT_STATE.cards));
-        }
-
-        if (!parsed.activeCardId && parsed.cards.length > 0) {
-          parsed.activeCardId = parsed.cards[0].id;
-        }
-
-        if (typeof parsed.dailyLimit === 'undefined') {
-          parsed.dailyLimit = DEFAULT_STATE.dailyLimit || 50000;
-        }
-        if (typeof parsed.withdrawnToday === 'undefined') {
-          parsed.withdrawnToday = 0;
-        }
-        if (!Array.isArray(parsed.transactions)) {
-          parsed.transactions = [];
-        }
-
-        // Remove any leaked transient variables
-        delete parsed.transientCvv;
-        delete parsed.tempCvv;
-        delete parsed.inactivityTimer;
-
-        return parsed;
+      if (!saved) {
+        return this._cloneDefaultState();
       }
+      const parsed = JSON.parse(saved);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Corrupted root state shape');
+      }
+
+      const defaults = this._cloneDefaultState();
+      let repaired = false;
+
+      if (parsed.schemaVersion !== undefined && parsed.schemaVersion !== defaults.schemaVersion) {
+        repaired = true;
+      }
+      parsed.schemaVersion = defaults.schemaVersion;
+
+      // Validate accounts & numeric balances (repair negative / NaN / missing accounts)
+      if (!parsed.accounts || typeof parsed.accounts !== 'object' || !parsed.accounts.checking) {
+        parsed.accounts = defaults.accounts;
+        repaired = true;
+      } else {
+        for (const key of ['checking', 'savings']) {
+          if (!parsed.accounts[key] || typeof parsed.accounts[key] !== 'object') {
+            parsed.accounts[key] = defaults.accounts[key];
+            repaired = true;
+          } else {
+            const bal = Number(parsed.accounts[key].balance);
+            if (!Number.isFinite(bal) || bal < 0) {
+              parsed.accounts[key].balance = defaults.accounts[key].balance;
+              repaired = true;
+            } else {
+              parsed.accounts[key].balance = Math.round(bal * 100) / 100;
+            }
+          }
+        }
+      }
+
+      // Validate cassettes object
+      if (!parsed.cassettes || typeof parsed.cassettes !== 'object') {
+        parsed.cassettes = defaults.cassettes;
+      } else {
+        for (const d of [500, 200, 100, 50]) {
+          const count = Number(parsed.cassettes[d]);
+          if (!Number.isFinite(count) || count < 0) {
+            parsed.cassettes[d] = defaults.cassettes[d];
+            repaired = true;
+          } else {
+            parsed.cassettes[d] = Math.floor(count);
+          }
+        }
+      }
+
+      if (typeof parsed.paperRoll !== 'number' || !Number.isFinite(parsed.paperRoll) || parsed.paperRoll < 0 || parsed.paperRoll > 100) {
+        parsed.paperRoll = 88;
+      }
+
+      // Validate cards & preserve persisted PIN lockout retry counts
+      if (Array.isArray(parsed.cards) && parsed.cards.length > 0) {
+        parsed.cards = parsed.cards.filter(c => c && typeof c === 'object' && c.id).map((c, idx) => {
+          const fallbackCard = defaults.cards[idx] || defaults.cards[0];
+          c.frozen = !!c.frozen;
+          c.intl = c.intl !== undefined ? !!c.intl : true;
+          c.contactless = c.contactless !== undefined ? !!c.contactless : true;
+          if (!c.holder) c.holder = fallbackCard.holder;
+          if (!c.number) c.number = fallbackCard.number;
+          if (!c.pin) c.pin = fallbackCard.pin;
+          const retries = Number(c.pinRetriesLeft);
+          c.pinRetriesLeft = Number.isInteger(retries) && retries >= 0 && retries <= 3 ? retries : (c.frozen ? 0 : 3);
+          delete c.transientCvv;
+          delete c.tempCvv;
+          return c;
+        });
+        if (parsed.cards.length === 0) {
+          parsed.cards = defaults.cards;
+          repaired = true;
+        }
+      } else {
+        if (parsed.cards !== undefined && !Array.isArray(parsed.cards)) repaired = true;
+        parsed.cards = defaults.cards;
+      }
+
+      if (!parsed.activeCardId || !parsed.cards.some(c => c.id === parsed.activeCardId)) {
+        parsed.activeCardId = parsed.cards[0].id;
+      }
+
+      if (typeof parsed.dailyLimit !== 'number' || !Number.isFinite(parsed.dailyLimit) || parsed.dailyLimit <= 0) {
+        parsed.dailyLimit = defaults.dailyLimit || 25000;
+        if (parsed.dailyLimit !== defaults.dailyLimit) repaired = true;
+      }
+      if (typeof parsed.withdrawnToday !== 'number' || !Number.isFinite(parsed.withdrawnToday) || parsed.withdrawnToday < 0) {
+        if (parsed.withdrawnToday !== undefined) repaired = true;
+        parsed.withdrawnToday = 0;
+      }
+
+      if (!parsed.rates || typeof parsed.rates !== 'object') parsed.rates = defaults.rates;
+      if (!parsed.currency || !parsed.rates[parsed.currency]) parsed.currency = 'INR';
+
+      if (!Array.isArray(parsed.transactions)) {
+        if (parsed.transactions !== undefined) repaired = true;
+        parsed.transactions = [];
+      } else {
+        parsed.transactions = parsed.transactions.filter(t => t && typeof t === 'object' && Number.isFinite(Number(t.amount)));
+        if (parsed.transactions.length > 500) {
+          parsed.transactions.length = 500;
+        }
+      }
+
+      // Check balance vs ledger integrity on tampered Demo Default state
+      if (parsed.transactions.length === 0 && parsed.accounts.checking.balance !== defaults.accounts.checking.balance) {
+        repaired = true;
+      }
+
+      // Remove any leaked transient variables
+      delete parsed.transientCvv;
+      delete parsed.tempCvv;
+      delete parsed.inactivityTimer;
+
+      if (repaired) {
+        this.recoveryWarning = 'Recovered damaged or inconsistent LocalStorage fields back to safe defaults. Use Reset Demo if needed.';
+      }
+      return parsed;
     } catch (e) {
       console.warn('Failed to load local storage state:', e);
+      this.recoveryWarning = 'Corrupted LocalStorage detected. Safely fell back to factory demo state.';
     }
-    return JSON.parse(JSON.stringify(DEFAULT_STATE));
+    return this._cloneDefaultState();
   }
 
   saveState() {
@@ -444,13 +667,23 @@ class StateManager {
       delete clone.inactivityTimer;
 
       localStorage.setItem(STORAGE_KEY, JSON.stringify(clone));
+      return { ok: true };
     } catch (e) {
       console.warn('Failed to save state:', e);
+      const isQuota = e && (e.name === 'QuotaExceededError' || e.code === 22);
+      const msg = isQuota
+        ? 'Browser storage quota exceeded! Free up space or click Reset Demo.'
+        : 'Unable to save session to browser storage.';
+      if (typeof showToast === 'function') {
+        showToast(msg, 'error');
+      }
+      return { ok: false, error: msg };
     }
   }
 
   resetState() {
-    this.data = JSON.parse(JSON.stringify(DEFAULT_STATE));
+    this.recoveryWarning = '';
+    this.data = this._cloneDefaultState();
     this.saveState();
   }
 
@@ -465,7 +698,8 @@ class StateManager {
   formatMoney(amount, targetCurrency = null) {
     const curr = targetCurrency || this.data.currency;
     const rateObj = this.data.rates[curr] || this.data.rates.INR || { symbol: '₹', rate: 1.0 };
-    const converted = amount * rateObj.rate;
+    const numericAmt = Number(amount);
+    const converted = (Number.isFinite(numericAmt) ? numericAmt : 0) * rateObj.rate;
     
     // Formatting with currency symbol in Indian Rupee format
     return `${rateObj.symbol}${converted.toLocaleString('en-IN', {
@@ -476,7 +710,11 @@ class StateManager {
 
   addTransaction(tx) {
     this.data.transactions.unshift(tx);
-    this.saveState();
+    // Bounded ring buffer capped at 500 entries to prevent unbounded memory/storage growth
+    if (this.data.transactions.length > 500) {
+      this.data.transactions.length = 500;
+    }
+    return this.saveState();
   }
 }
 
@@ -501,7 +739,12 @@ class AtmController {
     this.depositCounts = { 500: 0, 200: 0, 100: 0, 50: 0 };
     this.lastReceiptData = null;
 
-    // Milestone 3: Inactivity Timer Engine (45s warning, 60s timeout)
+    // Transaction concurrency & idempotency guards (Milestone 4)
+    this.isTransactionBusy = false;
+    this.isProcessing = false;
+    this.processedIdempotencyKeys = new Set();
+
+    // Milestone 3 & 4: Timer Engine
     this.lastActivityTime = null;
     this.inactivityWarningTimer = null;
     this.inactivityTimeoutTimer = null;
@@ -509,6 +752,9 @@ class AtmController {
     this.isWarningShown = false;
     this.ejectScreenTimeout = null;
     this.faceAuthTimeout = null;
+    this.qrTimerInterval = null;
+    this.countdownInterval = null;
+    this.dispensingTimer = null;
 
     this.initClock();
   }
@@ -521,12 +767,27 @@ class AtmController {
         el.textContent = now.toLocaleTimeString();
       }
     };
-    setInterval(updateTime, 1000);
+    const timer = setInterval(updateTime, 1000);
+    if (timer && typeof timer.unref === 'function') timer.unref();
     updateTime();
   }
 
+  setTransactionBusy(busy) {
+    const flag = !!busy;
+    this.isTransactionBusy = flag;
+    this.isProcessing = flag;
+    const btnIds = ['withdrawConfirmBtn', 'depositConfirmBtn', 'transferConfirmBtn', 'pinChangeConfirmBtn'];
+    btnIds.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.disabled = flag;
+        btn.setAttribute('aria-busy', flag ? 'true' : 'false');
+      }
+    });
+  }
+
   // ===========================================================================
-  // CENTRALIZED CARD AUTHORIZATION ENGINE (MILESTONE 3)
+  // CENTRALIZED CARD AUTHORIZATION ENGINE (MILESTONE 3 + 4 HARDENING)
   // ===========================================================================
   authorizeCardTransaction(operationName, requiredAmount = 0, accountKey = null) {
     // 1. Session check: user must be authenticated
@@ -539,38 +800,56 @@ class AtmController {
     }
 
     // 2. Identify the authoritative card associated with this active session
-    let card = null;
-    if (this.isCardInserted) {
-      const cardId = this.sessionCardId || state.data.activeCardId;
-      card = state.data.cards.find(c => c.id === cardId);
-      if (!card) {
-        return {
-          authorized: false,
-          code: 'INVALID_CARD',
-          reason: 'Transaction declined. Card associated with this session is invalid.'
-        };
-      }
+    const cardId = this.isCardInserted ? (this.sessionCardId || state.data.activeCardId) : state.data.activeCardId;
+    const card = state.data.cards.find(c => c.id === cardId) || state.getActiveCard();
+    if (!card) {
+      return {
+        authorized: false,
+        code: 'INVALID_CARD',
+        reason: 'Transaction declined. Card associated with this session is invalid.'
+      };
+    }
 
-      // Authoritative Card-Freeze check:
-      // If card is frozen, immediately terminate ATM session and prevent financial mutation
-      if (card.frozen) {
-        this.ejectCard('Transaction declined. This card is frozen. Unfreeze the card and authenticate again to continue.');
-        return {
-          authorized: false,
-          code: 'CARD_FROZEN',
-          reason: 'Transaction declined. This card is frozen. Unfreeze the card and authenticate again to continue.'
-        };
-      }
-    } else {
-      // Cardless session uses active account card for receipt/meta reference
-      card = state.getActiveCard();
+    // Authoritative Card-Freeze check (applies to both carded & cardless paths)
+    if (card.frozen) {
+      this.ejectCard('Transaction declined. This card is frozen. Unfreeze the card and authenticate again to continue.');
+      return {
+        authorized: false,
+        code: 'CARD_FROZEN',
+        reason: 'Transaction declined. This card is frozen. Unfreeze the card and authenticate again to continue.'
+      };
+    }
+
+    // Enforce International ATM toggle for non-INR currency operations
+    if (state.data.currency && state.data.currency !== 'INR' && card.intl === false && (operationName === 'withdrawal' || operationName === 'fastcash' || operationName === 'transfer')) {
+      return {
+        authorized: false,
+        code: 'INTL_DISABLED',
+        reason: `Transaction declined. International ATM access is disabled for ${card.holder} when currency is ${state.data.currency}.`
+      };
+    }
+
+    // Enforce Contactless toggle on cardless / QR-tap pathways
+    if (operationName === 'cardless' && card.contactless === false) {
+      return {
+        authorized: false,
+        code: 'CONTACTLESS_DISABLED',
+        reason: 'Transaction declined. Contactless / QR tap payments are disabled in Wallet card controls.'
+      };
     }
 
     // 3. Precondition validation without mutating financial state
     if (requiredAmount > 0) {
+      if (!Number.isFinite(requiredAmount)) {
+        return {
+          authorized: false,
+          code: 'INVALID_AMOUNT',
+          reason: 'Transaction declined. Invalid monetary amount.'
+        };
+      }
       // Limit check for withdrawals/fast-cash
       if (operationName === 'withdrawal' || operationName === 'fastcash') {
-        const remainingLimit = state.data.dailyLimit - state.data.withdrawnToday;
+        const remainingLimit = Math.max(0, state.data.dailyLimit - state.data.withdrawnToday);
         if (requiredAmount > remainingLimit) {
           return {
             authorized: false,
@@ -583,7 +862,7 @@ class AtmController {
       // Account balance check
       if (accountKey) {
         const account = state.getAccount(accountKey);
-        if (!account || account.balance < requiredAmount) {
+        if (!account || !Number.isFinite(account.balance) || account.balance < requiredAmount) {
           return {
             authorized: false,
             code: 'INSUFFICIENT_FUNDS',
@@ -689,6 +968,29 @@ class AtmController {
     }
   }
 
+  clearAllTransientTimers() {
+    if (this.ejectScreenTimeout) {
+      clearTimeout(this.ejectScreenTimeout);
+      this.ejectScreenTimeout = null;
+    }
+    if (this.faceAuthTimeout) {
+      clearTimeout(this.faceAuthTimeout);
+      this.faceAuthTimeout = null;
+    }
+    if (this.qrTimerInterval) {
+      clearInterval(this.qrTimerInterval);
+      this.qrTimerInterval = null;
+    }
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+    if (this.dispensingTimer) {
+      clearTimeout(this.dispensingTimer);
+      this.dispensingTimer = null;
+    }
+  }
+
   clearInactivityTimers() {
     if (this.inactivityWarningTimer) {
       clearTimeout(this.inactivityWarningTimer);
@@ -711,6 +1013,8 @@ class AtmController {
 
   handleSessionTimeout() {
     this.hideInactivityWarning();
+    this.clearAllTransientTimers();
+    this.isTransactionBusy = false;
     this.sessionAuthToken++;
     
     // Clear all transient transaction and security state
@@ -730,6 +1034,24 @@ class AtmController {
 
   switchScreen(screenId, speechPrompt = '') {
     this.currentScreen = screenId;
+
+    // Clear screen-specific intervals/timeouts when navigating away so timers never leak
+    if (this.ejectScreenTimeout && screenId !== 'screenCardEjected') {
+      clearTimeout(this.ejectScreenTimeout);
+      this.ejectScreenTimeout = null;
+    }
+    if (this.qrTimerInterval && screenId !== 'screenCardless') {
+      clearInterval(this.qrTimerInterval);
+      this.qrTimerInterval = null;
+    }
+    if (this.countdownInterval && screenId !== 'screenSuccess') {
+      clearInterval(this.countdownInterval);
+      this.countdownInterval = null;
+    }
+    if (this.dispensingTimer && screenId !== 'screenDispensing' && screenId !== 'screenSuccess') {
+      clearTimeout(this.dispensingTimer);
+      this.dispensingTimer = null;
+    }
 
     // Hide all screens & activate target
     document.querySelectorAll('.atm-screen').forEach(s => s.classList.remove('active'));
@@ -755,12 +1077,6 @@ class AtmController {
       audio.speak(speechPrompt);
     }
 
-    // Clear eject countdown timer if moving to another screen
-    if (this.ejectScreenTimeout && screenId !== 'screenCardEjected') {
-      clearTimeout(this.ejectScreenTimeout);
-      this.ejectScreenTimeout = null;
-    }
-
     // Reset inactivity tracking on screen change
     this.resetInactivityTimer();
   }
@@ -777,12 +1093,19 @@ class AtmController {
       return;
     }
 
+    // Restore retry quota only if card was cleanly unfrozen after a prior lockout
+    if (typeof card.pinRetriesLeft !== 'number' || card.pinRetriesLeft <= 0) {
+      card.pinRetriesLeft = 3;
+      state.saveState();
+    }
+
     this.sessionCardId = card.id;
     this.sessionAuthToken++;
     this.isCardInserted = true;
     this.isAuthenticated = false;
+    this.isTransactionBusy = false;
     this.pinBuffer = '';
-    this.pinRetriesLeft = 3;
+    this.pinRetriesLeft = card.pinRetriesLeft;
     this.lastActivityTime = Date.now();
     this.scheduleInactivityTimers();
 
@@ -833,8 +1156,10 @@ class AtmController {
     this.pinBuffer = '';
     this.withdrawInput = '';
 
-    // Teardown inactivity timers and warning modal
+    // Teardown inactivity & transient screen timers
     this.clearInactivityTimers();
+    this.clearAllTransientTimers();
+    this.setTransactionBusy(false);
     this.stopFaceCamera();
     if (typeof clearTemporaryCvv === 'function') {
       clearTemporaryCvv('session ended');
@@ -1199,11 +1524,14 @@ class AtmController {
     }
 
     if (this.pinBuffer === card.pin) {
-      // Success
+      // Success: reset persisted retry count
       audio.playEnterTone();
       this.sessionCardId = card.id;
       this.isAuthenticated = true;
       this.pinBuffer = '';
+      this.pinRetriesLeft = 3;
+      card.pinRetriesLeft = 3;
+      state.saveState();
       this.lastActivityTime = Date.now();
       this.scheduleInactivityTimers();
 
@@ -1215,9 +1543,11 @@ class AtmController {
       showToast('PIN verified successfully!', 'success');
       announceA11y(`Welcome ${card.holder}. PIN verified successfully.`);
     } else {
-      // Failed PIN attempt
+      // Failed PIN attempt: persist retry count across reloads
       audio.playErrorTone();
-      this.pinRetriesLeft--;
+      const currentRetries = typeof card.pinRetriesLeft === 'number' ? card.pinRetriesLeft : this.pinRetriesLeft;
+      this.pinRetriesLeft = Math.max(0, currentRetries - 1);
+      card.pinRetriesLeft = this.pinRetriesLeft;
       this.pinBuffer = '';
       this.renderPinDots();
 
@@ -1229,11 +1559,13 @@ class AtmController {
 
       if (this.pinRetriesLeft <= 0) {
         card.frozen = true;
+        card.pinRetriesLeft = 0;
         state.saveState();
         updateDashboardUI();
         announceA11y('Card locked due to 3 incorrect PIN attempts.', 'assertive');
         this.ejectCard('Card locked due to 3 incorrect PIN attempts for security.');
       } else {
+        state.saveState();
         showToast(`Incorrect PIN! ${this.pinRetriesLeft} attempts remaining.`, 'error');
         announceA11y(`Incorrect PIN. ${this.pinRetriesLeft} attempts remaining.`);
       }
@@ -1504,9 +1836,21 @@ class AtmController {
   }
 
   simulateAppPay(appName = 'Nexus e-Rupee') {
+    if (this.currentScreen !== 'screenCardless') return;
+    const card = state.getActiveCard();
+    if (card.frozen) {
+      audio.playErrorTone();
+      showToast('Transaction declined. Active card is frozen. Unfreeze it to continue.', 'error');
+      return;
+    }
+    if (card.contactless === false) {
+      audio.playErrorTone();
+      showToast('Transaction declined. Contactless / QR tap payments are disabled in Wallet card controls.', 'error');
+      return;
+    }
+
     audio.playEnterTone();
     const amount = this.cardlessQrAmount || 500;
-    const card = state.getActiveCard();
     const account = state.getAccount('checking');
 
     if (amount > account.balance) {
@@ -1515,7 +1859,10 @@ class AtmController {
       return;
     }
 
-    if (this.qrTimerInterval) clearInterval(this.qrTimerInterval);
+    if (this.qrTimerInterval) {
+      clearInterval(this.qrTimerInterval);
+      this.qrTimerInterval = null;
+    }
 
     showToast(`Payment of ₹${amount.toLocaleString('en-IN')} approved via ${appName}!`, 'success');
     audio.speak(`Payment verified via ${appName}. Dispensing ${amount} rupees cash now.`);
@@ -1530,14 +1877,24 @@ class AtmController {
   }
 
   authorizeCardlessOtp() {
-    const otp = document.getElementById('cardlessOtpInput').value.trim();
-    if (otp.length !== 6 || isNaN(otp)) {
+    const card = state.getActiveCard();
+    if (card.frozen) {
       audio.playErrorTone();
-      showToast('Please enter a valid 6-digit OTP code.', 'error');
+      showToast('Transaction declined. Active card is frozen. Unfreeze to continue.', 'error');
+      return;
+    }
+    if (card.contactless === false) {
+      audio.playErrorTone();
+      showToast('Transaction declined. Contactless / remote cardless access is disabled in Wallet controls.', 'error');
+      return;
+    }
+    const otp = document.getElementById('cardlessOtpInput').value.trim();
+    if (!/^\d{6}$/.test(otp)) {
+      audio.playErrorTone();
+      showToast('Please enter a valid 6-digit numeric OTP code.', 'error');
       return;
     }
     audio.playEnterTone();
-    const card = state.getActiveCard();
     this.isAuthenticated = true;
     document.getElementById('menuUserName').textContent = `${card.holder} (OTP)`;
     document.getElementById('menuCardType').textContent = `One-Time Passcode • ${card.tierLabel}`;
@@ -1571,6 +1928,7 @@ class AtmController {
 
   // Withdraw Logic
   executeFastCash(amount) {
+    if (this.currentScreen === 'screenDispensing' || this.isTransactionBusy) return;
     this.recordUserActivity();
     const cardId = this.sessionCardId || state.data.activeCardId;
     const card = state.data.cards.find(c => c.id === cardId) || state.getActiveCard();
@@ -1589,29 +1947,29 @@ class AtmController {
 
   updateWithdrawInput() {
     const input = document.getElementById('withdrawAmountInput');
-    input.value = this.withdrawInput || '0';
-    document.getElementById('withdrawErrorMsg').textContent = '';
+    if (input) input.value = this.withdrawInput || '0';
+    const errEl = document.getElementById('withdrawErrorMsg');
+    if (errEl) errEl.textContent = '';
   }
 
   confirmCustomWithdrawal() {
+    if (this.currentScreen === 'screenDispensing' || this.isTransactionBusy) return;
     this.recordUserActivity();
-    const amount = parseFloat(this.withdrawInput);
-    if (!amount || amount <= 0) {
+
+    const errEl = document.getElementById('withdrawErrorMsg');
+    const check = InputValidators.validateWithdrawalAmount(this.withdrawInput, 100);
+    if (!check.valid) {
       audio.playErrorTone();
-      document.getElementById('withdrawErrorMsg').textContent = 'Please enter a valid amount.';
+      if (errEl) errEl.textContent = check.reason;
+      showToast(check.reason, 'error');
       return;
     }
 
-    if (amount % 10 !== 0) {
-      audio.playErrorTone();
-      document.getElementById('withdrawErrorMsg').textContent = 'Amount must be in multiples of ₹50, ₹100, ₹200, or ₹500.';
-      return;
-    }
-
+    const amount = check.value;
     const auth = this.authorizeCardTransaction('withdrawal', amount, this.selectedWithdrawAccount);
     if (!auth.authorized) {
       audio.playErrorTone();
-      document.getElementById('withdrawErrorMsg').textContent = auth.reason;
+      if (errEl) errEl.textContent = auth.reason;
       showToast(auth.reason, 'error');
       announceA11y(auth.reason, 'assertive');
       return;
@@ -1621,126 +1979,207 @@ class AtmController {
     this.processWithdrawal(amount, this.selectedWithdrawAccount, denomPref);
   }
 
-  processWithdrawal(amount, accountKey, denomPref) {
-    this.recordUserActivity();
-
-    // 1. Centralized Authorization Precondition Check (Validates freeze, session, limits, balance)
-    const auth = this.authorizeCardTransaction('withdrawal', amount, accountKey);
-    if (!auth.authorized) {
-      audio.playErrorTone();
-      showToast(auth.reason, 'error');
-      announceA11y(auth.reason, 'assertive');
+  processWithdrawal(amount, accountKey, denomPref, options = {}) {
+    if (this.isTransactionBusy) return;
+    const idemKey = options.idempotencyKey || null;
+    if (idemKey && this.processedIdempotencyKeys.has(idemKey)) {
+      showToast('Duplicate submission blocked safely.', 'info');
       return;
     }
 
-    const account = auth.account;
-    const card = auth.card;
+    this.setTransactionBusy(true);
+    let awaitingDispenseAnimation = false;
+    try {
+      this.recordUserActivity();
 
-    // 2. Validate physical banknote cassette capacity before any state changes
-    if (!state.data.cassettes) state.data.cassettes = { 500: 1840, 200: 1450, 100: 1920, 50: 980 };
-    const totalCassetteCash = (state.data.cassettes[500] * 500) + (state.data.cassettes[200] * 200) + (state.data.cassettes[100] * 100) + (state.data.cassettes[50] * 50);
-    if (amount > totalCassetteCash) {
-      audio.playErrorTone();
-      showToast('Transaction declined: ATM cash inventory insufficient. Please try a smaller amount.', 'error');
-      announceA11y('Transaction declined: Insufficient ATM cash inventory.', 'assertive');
-      return;
-    }
+      const validCheck = InputValidators.validateWithdrawalAmount(amount, 50);
+      if (!validCheck.valid) {
+        audio.playErrorTone();
+        showToast(validCheck.reason, 'error');
+        return;
+      }
+      const cleanAmt = validCheck.value;
 
-    // 3. Calculate note breakdown
-    let notesText = '';
-    let n500 = 0, n200 = 0, n100 = 0, n50 = 0;
+      // 1. Centralized Authorization Precondition Check (Validates freeze, session, limits, balance)
+      const auth = this.authorizeCardTransaction('withdrawal', cleanAmt, accountKey);
+      if (!auth.authorized) {
+        audio.playErrorTone();
+        showToast(auth.reason, 'error');
+        announceA11y(auth.reason, 'assertive');
+        return;
+      }
 
-    if (denomPref === 'large') {
-      n500 = Math.floor(amount / 500);
-      const rem = amount % 500;
-      n100 = Math.floor(rem / 100);
-      notesText = `${n500}x ₹500 Note${n500 > 1 ? 's' : ''}` + (rem ? ` + ${n100}x ₹100s` : '');
-    } else if (denomPref === 'small') {
-      n100 = Math.floor(amount / 100);
-      notesText = `${n100}x ₹100 Note${n100 > 1 ? 's' : ''}`;
-    } else {
-      n500 = Math.floor(amount / 500);
-      const rem1 = amount % 500;
-      n200 = Math.floor(rem1 / 200);
-      const rem2 = rem1 % 200;
-      n100 = Math.floor(rem2 / 100);
-      const rem3 = rem2 % 100;
-      n50 = Math.floor(rem3 / 50);
+      const account = auth.account;
+      const card = auth.card;
+
+      // 2. Validate physical banknote cassette capacity before any state changes
+      if (!state.data.cassettes) state.data.cassettes = { 500: 1840, 200: 1450, 100: 1920, 50: 980 };
+      const totalCassetteCash = (state.data.cassettes[500] * 500) + (state.data.cassettes[200] * 200) + (state.data.cassettes[100] * 100) + (state.data.cassettes[50] * 50);
+      if (cleanAmt > totalCassetteCash) {
+        audio.playErrorTone();
+        showToast('Transaction declined: ATM cash inventory insufficient. Please try a smaller amount.', 'error');
+        announceA11y('Transaction declined: Insufficient ATM cash inventory.', 'assertive');
+        return;
+      }
+
+      // 3. Calculate note breakdown respecting stock
+      let notesText = '';
+      let n500 = 0, n200 = 0, n100 = 0, n50 = 0;
+
+      if (denomPref === 'large') {
+        n500 = Math.min(state.data.cassettes[500], Math.floor(cleanAmt / 500));
+        let rem = cleanAmt - n500 * 500;
+        n200 = Math.min(state.data.cassettes[200], Math.floor(rem / 200));
+        rem -= n200 * 200;
+        n100 = Math.min(state.data.cassettes[100], Math.floor(rem / 100));
+        rem -= n100 * 100;
+        n50 = Math.min(state.data.cassettes[50], Math.floor(rem / 50));
+        rem -= n50 * 50;
+        if (rem !== 0) {
+          audio.playErrorTone();
+          showToast('Cannot fulfill requested amount with available note denominations.', 'error');
+          return;
+        }
+      } else if (denomPref === 'small') {
+        n100 = Math.min(state.data.cassettes[100], Math.floor(cleanAmt / 100));
+        let rem = cleanAmt - n100 * 100;
+        n50 = Math.min(state.data.cassettes[50], Math.floor(rem / 50));
+        rem -= n50 * 50;
+        if (rem !== 0) {
+          audio.playErrorTone();
+          showToast('Insufficient small notes (₹100/₹50) in ATM cassette.', 'error');
+          return;
+        }
+      } else {
+        n500 = Math.min(state.data.cassettes[500], Math.floor(cleanAmt / 500));
+        let rem = cleanAmt - n500 * 500;
+        n200 = Math.min(state.data.cassettes[200], Math.floor(rem / 200));
+        rem -= n200 * 200;
+        n100 = Math.min(state.data.cassettes[100], Math.floor(rem / 100));
+        rem -= n100 * 100;
+        n50 = Math.min(state.data.cassettes[50], Math.floor(rem / 50));
+        rem -= n50 * 50;
+        if (rem !== 0) {
+          audio.playErrorTone();
+          showToast('Cannot fulfill exact amount from remaining ATM cassettes.', 'error');
+          return;
+        }
+      }
+
       const parts = [];
       if (n500) parts.push(`${n500}x ₹500`);
       if (n200) parts.push(`${n200}x ₹200`);
       if (n100) parts.push(`${n100}x ₹100`);
       if (n50) parts.push(`${n50}x ₹50`);
-      notesText = parts.join(', ') || `${Math.floor(amount / 50)}x ₹50`;
-    }
+      notesText = parts.join(', ');
 
-    // 4. Atomic Commit: Mutate Financial State
-    account.balance -= amount;
-    state.data.withdrawnToday += amount;
-    state.data.cassettes[500] = Math.max(0, state.data.cassettes[500] - n500);
-    state.data.cassettes[200] = Math.max(0, state.data.cassettes[200] - n200);
-    state.data.cassettes[100] = Math.max(0, state.data.cassettes[100] - n100);
-    state.data.cassettes[50] = Math.max(0, state.data.cassettes[50] - n50);
-    if (state.data.paperRoll > 0) state.data.paperRoll = Math.max(0, state.data.paperRoll - 1);
+      // 4. All-or-Nothing Atomic Commit with Rollback Snapshot
+      const prevBal = account.balance;
+      const prevWithdrawn = state.data.withdrawnToday;
+      const prevCassettes = { ...state.data.cassettes };
+      const prevPaper = state.data.paperRoll;
 
-    const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
-    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+      account.balance = Math.round((account.balance - cleanAmt) * 100) / 100;
+      state.data.withdrawnToday = Math.round((state.data.withdrawnToday + cleanAmt) * 100) / 100;
+      state.data.cassettes[500] -= n500;
+      state.data.cassettes[200] -= n200;
+      state.data.cassettes[100] -= n100;
+      state.data.cassettes[50] -= n50;
+      if (state.data.paperRoll > 0) state.data.paperRoll = Math.max(0, state.data.paperRoll - 1);
 
-    const tx = {
-      id: `TX-${Date.now().toString().slice(-4)}`,
-      type: 'withdrawal',
-      typeLabel: 'ATM Cash Withdrawal',
-      amount: amount,
-      account: accountKey,
-      cardUsed: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
-      timestamp: timestamp,
-      ref: ref
-    };
+      const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
+      const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
-    state.addTransaction(tx);
-    updateDashboardUI();
-    updateDiagnosticsUI();
-
-    // Prepare Dispensing Screen Animation
-    document.getElementById('dispensedAmountText').textContent = state.formatMoney(amount);
-    document.getElementById('dispensedNotesText').textContent = notesText;
-    
-    this.switchScreen('screenDispensing', 'Counting and dispensing your currency now.');
-    audio.playCashMotorSound();
-
-    const fill = document.getElementById('dispensingProgressFill');
-    fill.style.width = '0%';
-    setTimeout(() => fill.style.width = '100%', 50);
-
-    // Dispense animated physical stack
-    setTimeout(() => {
-      const cashStack = document.getElementById('dispensedCashStack');
-      if (cashStack) cashStack.classList.add('active');
-
-      // Dispense paper receipt slip
-      this.lastReceiptData = {
-        type: 'CASH WITHDRAWAL',
-        amount: state.formatMoney(amount),
-        availBal: state.formatMoney(account.balance),
-        ledgerBal: state.formatMoney(account.balance),
-        cardMasked: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
-        cardholder: card.holder,
-        accountType: account.name.toUpperCase(),
+      const tx = {
+        id: `TX-${Date.now().toString().slice(-4)}`,
+        type: 'withdrawal',
+        typeLabel: 'ATM Cash Withdrawal',
+        amount: cleanAmt,
+        account: accountKey,
+        cardUsed: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
+        timestamp: timestamp,
         ref: ref,
-        timestamp: timestamp
+        status: 'Completed',
+        balanceAfter: account.balance
       };
-      this.triggerEjectedReceiptSnippet();
 
-      // Switch to Success screen after cash is out
-      document.getElementById('successMainTitle').textContent = 'CASH DISPENSED';
-      document.getElementById('successSubtitle').textContent = 'Please collect your cash from the slot below.';
-      document.getElementById('successRefCode').textContent = ref;
-      document.getElementById('successNewBalance').textContent = state.formatMoney(account.balance);
-      document.getElementById('successTimestamp').textContent = timestamp;
+      const saved = state.addTransaction(tx);
+      if (saved && saved.ok === false) {
+        // Rollback atomic state completely if storage write failed
+        account.balance = prevBal;
+        state.data.withdrawnToday = prevWithdrawn;
+        state.data.cassettes = prevCassettes;
+        state.data.paperRoll = prevPaper;
+        state.data.transactions.shift();
+        audio.playErrorTone();
+        return;
+      }
 
-      this.switchScreen('screenSuccess');
-      this.startSuccessCountdown();
-    }, 2600);
+      if (idemKey) this.processedIdempotencyKeys.add(idemKey);
+
+      updateDashboardUI();
+      updateDiagnosticsUI();
+
+      // Prepare Dispensing Screen Animation
+      const dispAmtEl = document.getElementById('dispensedAmountText');
+      if (dispAmtEl) dispAmtEl.textContent = state.formatMoney(cleanAmt);
+      const dispNotesEl = document.getElementById('dispensedNotesText');
+      if (dispNotesEl) dispNotesEl.textContent = notesText;
+      
+      this.switchScreen('screenDispensing', 'Counting and dispensing your currency now.');
+      audio.playCashMotorSound();
+
+      const fill = document.getElementById('dispensingProgressFill');
+      if (fill) {
+        fill.style.width = '0%';
+        setTimeout(() => fill.style.width = '100%', 50);
+      }
+
+      const txToken = this.sessionAuthToken;
+      if (this.dispensingTimer) clearTimeout(this.dispensingTimer);
+
+      // Dispense animated physical stack (aborts cleanly if session expires/ejects mid-dispense)
+      awaitingDispenseAnimation = true;
+      this.dispensingTimer = setTimeout(() => {
+        this.dispensingTimer = null;
+        this.setTransactionBusy(false);
+        if (txToken !== this.sessionAuthToken || !this.isAuthenticated) return;
+
+        const cashStack = document.getElementById('dispensedCashStack');
+        if (cashStack) cashStack.classList.add('active');
+
+        this.lastReceiptData = {
+          type: 'CASH WITHDRAWAL',
+          amount: state.formatMoney(cleanAmt),
+          availBal: state.formatMoney(account.balance),
+          ledgerBal: state.formatMoney(account.balance),
+          cardMasked: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
+          cardholder: card.holder,
+          accountType: account.name.toUpperCase(),
+          ref: ref,
+          timestamp: timestamp
+        };
+        this.triggerEjectedReceiptSnippet();
+
+        const titleEl = document.getElementById('successMainTitle');
+        if (titleEl) titleEl.textContent = 'CASH DISPENSED';
+        const subEl = document.getElementById('successSubtitle');
+        if (subEl) subEl.textContent = 'Please collect your cash from the slot below.';
+        const refEl = document.getElementById('successRefCode');
+        if (refEl) refEl.textContent = ref;
+        const balEl = document.getElementById('successNewBalance');
+        if (balEl) balEl.textContent = state.formatMoney(account.balance);
+        const tsEl = document.getElementById('successTimestamp');
+        if (tsEl) tsEl.textContent = timestamp;
+
+        this.switchScreen('screenSuccess');
+        this.startSuccessCountdown();
+      }, 2600);
+    } finally {
+      if (!awaitingDispenseAnimation) {
+        this.setTransactionBusy(false);
+      }
+    }
   }
 
   // Deposit Logic
@@ -1759,238 +2198,296 @@ class AtmController {
   }
 
   confirmDeposit() {
-    this.recordUserActivity();
-    const auth = this.authorizeCardTransaction('deposit');
-    if (!auth.authorized) {
-      audio.playErrorTone();
-      showToast(auth.reason, 'error');
-      announceA11y(auth.reason, 'assertive');
-      return;
-    }
-
-    const targetAccountKey = document.getElementById('depositTargetAccount').value;
-    const account = state.getAccount(targetAccountKey);
-    const card = auth.card;
-    let amount = 0;
-    let typeLabel = '';
-
-    if (this.selectedDepositType === 'cash') {
-      amount = Object.entries(this.depositCounts).reduce((sum, [denom, count]) => sum + (parseInt(denom) * count), 0);
-      typeLabel = 'ATM Cash Deposit';
-      if (amount <= 0) {
+    if (this.currentScreen !== 'screenDeposit' || this.isTransactionBusy) return;
+    this.setTransactionBusy(true);
+    try {
+      this.recordUserActivity();
+      const auth = this.authorizeCardTransaction('deposit');
+      if (!auth.authorized) {
         audio.playErrorTone();
-        showToast('Please insert/count at least one currency note.', 'error');
+        showToast(auth.reason, 'error');
+        announceA11y(auth.reason, 'assertive');
         return;
       }
-    } else {
-      amount = parseFloat(document.getElementById('chequeAmountInput').value);
-      const chequeNo = document.getElementById('chequeNumberInput').value;
-      const bank = document.getElementById('chequeBankInput').value;
 
-      if (!amount || amount <= 0 || !chequeNo) {
+      const targetAccountKey = document.getElementById('depositTargetAccount').value;
+      const account = state.getAccount(targetAccountKey);
+      const card = auth.card;
+      let amount = 0;
+      let typeLabel = '';
+
+      if (this.selectedDepositType === 'cash') {
+        const countCheck = InputValidators.validateDepositCounts(this.depositCounts);
+        if (!countCheck.valid) {
+          audio.playErrorTone();
+          showToast(countCheck.reason, 'error');
+          return;
+        }
+        amount = countCheck.total;
+        typeLabel = 'ATM Cash Deposit';
+      } else {
+        const chequeNo = document.getElementById('chequeNumberInput').value;
+        const chequeAmtRaw = document.getElementById('chequeAmountInput').value;
+        const bank = InputValidators.validateMemo(document.getElementById('chequeBankInput').value, 50).value;
+
+        const chequeCheck = InputValidators.validateCheque(chequeNo, chequeAmtRaw);
+        if (!chequeCheck.valid) {
+          audio.playErrorTone();
+          showToast(chequeCheck.reason, 'error');
+          return;
+        }
+        amount = chequeCheck.amount;
+        typeLabel = `Cheque Deposit #${chequeCheck.chequeNo} (${bank || 'Bank'})`;
+      }
+
+      // Atomic Commit with Rollback on Storage Failure
+      const prevBal = account.balance;
+      account.balance = Math.round((account.balance + amount) * 100) / 100;
+
+      const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
+      const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+      const tx = {
+        id: `TX-${Date.now().toString().slice(-4)}`,
+        type: 'deposit',
+        typeLabel: typeLabel,
+        amount: amount,
+        account: targetAccountKey,
+        cardUsed: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
+        timestamp: timestamp,
+        ref: ref,
+        status: 'Completed',
+        balanceAfter: account.balance
+      };
+
+      const saved = state.addTransaction(tx);
+      if (saved && saved.ok === false) {
+        account.balance = prevBal;
+        state.data.transactions.shift();
         audio.playErrorTone();
-        showToast('Please enter valid cheque number and amount.', 'error');
         return;
       }
-      typeLabel = `Cheque Deposit #${chequeNo} (${bank || 'Bank'})`;
+
+      updateDashboardUI();
+
+      // Deposit Shutter Sound & LED
+      audio.playCardInsertSound();
+      const led = document.getElementById('depositLed');
+      if (led) {
+        led.style.background = 'var(--accent-green)';
+        led.style.boxShadow = '0 0 10px var(--accent-green)';
+        setTimeout(() => {
+          led.style.background = '';
+          led.style.boxShadow = '';
+        }, 2000);
+      }
+
+      this.lastReceiptData = {
+        type: 'FUNDS DEPOSIT',
+        amount: state.formatMoney(amount),
+        availBal: state.formatMoney(account.balance),
+        ledgerBal: state.formatMoney(account.balance),
+        cardMasked: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
+        cardholder: card.holder,
+        accountType: account.name.toUpperCase(),
+        ref: ref,
+        timestamp: timestamp
+      };
+      this.triggerEjectedReceiptSnippet();
+
+      document.getElementById('successMainTitle').textContent = 'DEPOSIT COMPLETED';
+      document.getElementById('successSubtitle').textContent = `${state.formatMoney(amount)} has been credited to your ${account.name}.`;
+      document.getElementById('successRefCode').textContent = ref;
+      document.getElementById('successNewBalance').textContent = state.formatMoney(account.balance);
+      document.getElementById('successTimestamp').textContent = timestamp;
+
+      this.switchScreen('screenSuccess', 'Deposit successful. Your account has been credited.');
+      this.startSuccessCountdown();
+    } finally {
+      this.setTransactionBusy(false);
     }
-
-    // Atomic Commit: Update Financial State
-    account.balance += amount;
-
-    const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
-    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-
-    const tx = {
-      id: `TX-${Date.now().toString().slice(-4)}`,
-      type: 'deposit',
-      typeLabel: typeLabel,
-      amount: amount,
-      account: targetAccountKey,
-      cardUsed: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
-      timestamp: timestamp,
-      ref: ref
-    };
-
-    state.addTransaction(tx);
-    updateDashboardUI();
-
-    // Deposit Shutter Sound & LED
-    audio.playCardInsertSound();
-    const led = document.getElementById('depositLed');
-    if (led) {
-      led.style.background = 'var(--accent-green)';
-      led.style.boxShadow = '0 0 10px var(--accent-green)';
-      setTimeout(() => {
-        led.style.background = '';
-        led.style.boxShadow = '';
-      }, 2000);
-    }
-
-    this.lastReceiptData = {
-      type: 'FUNDS DEPOSIT',
-      amount: state.formatMoney(amount),
-      availBal: state.formatMoney(account.balance),
-      ledgerBal: state.formatMoney(account.balance),
-      cardMasked: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
-      cardholder: card.holder,
-      accountType: account.name.toUpperCase(),
-      ref: ref,
-      timestamp: timestamp
-    };
-    this.triggerEjectedReceiptSnippet();
-
-    document.getElementById('successMainTitle').textContent = 'DEPOSIT COMPLETED';
-    document.getElementById('successSubtitle').textContent = `${state.formatMoney(amount)} has been credited to your ${account.name}.`;
-    document.getElementById('successRefCode').textContent = ref;
-    document.getElementById('successNewBalance').textContent = state.formatMoney(account.balance);
-    document.getElementById('successTimestamp').textContent = timestamp;
-
-    this.switchScreen('screenSuccess', 'Deposit successful. Your account has been credited.');
-    this.startSuccessCountdown();
   }
 
   // Transfer Logic
   confirmTransfer() {
-    this.recordUserActivity();
-    const target = document.getElementById('transferTargetInput').value.trim();
-    const amount = parseFloat(document.getElementById('transferAmountInput').value);
-    const sourceKey = document.getElementById('transferSourceAccount').value;
-    const memo = document.getElementById('transferNoteInput').value.trim();
+    if (this.currentScreen !== 'screenTransfer' || this.isTransactionBusy) return;
+    this.setTransactionBusy(true);
+    try {
+      this.recordUserActivity();
+      const rawTarget = document.getElementById('transferTargetInput').value;
+      const rawAmount = document.getElementById('transferAmountInput').value;
+      const sourceKey = document.getElementById('transferSourceAccount').value;
+      const rawMemo = document.getElementById('transferNoteInput').value;
 
-    if (!target) {
-      audio.playErrorTone();
-      showToast('Please enter recipient account number or UPI ID.', 'error');
-      return;
+      const targetCheck = InputValidators.validateTransferTarget(rawTarget, state.data.accounts);
+      if (!targetCheck.valid) {
+        audio.playErrorTone();
+        showToast(targetCheck.reason, 'error');
+        return;
+      }
+
+      const amtCheck = InputValidators.validateTransferAmount(rawAmount);
+      if (!amtCheck.valid) {
+        audio.playErrorTone();
+        showToast(amtCheck.reason, 'error');
+        return;
+      }
+
+      const target = targetCheck.value;
+      const amount = amtCheck.value;
+      const memo = InputValidators.validateMemo(rawMemo, 80).value;
+
+      const auth = this.authorizeCardTransaction('transfer', amount, sourceKey);
+      if (!auth.authorized) {
+        audio.playErrorTone();
+        showToast(auth.reason, 'error');
+        announceA11y(auth.reason, 'assertive');
+        return;
+      }
+
+      const account = auth.account;
+      const card = auth.card;
+
+      // Atomic Commit with Rollback on Storage Failure
+      const prevBal = account.balance;
+      account.balance = Math.round((account.balance - amount) * 100) / 100;
+
+      const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
+      const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+      const tx = {
+        id: `TX-${Date.now().toString().slice(-4)}`,
+        type: 'transfer',
+        typeLabel: `Transfer to ${target}${memo ? ' (' + memo + ')' : ''}`,
+        amount: amount,
+        account: sourceKey,
+        cardUsed: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
+        timestamp: timestamp,
+        ref: ref,
+        status: 'Completed',
+        balanceAfter: account.balance
+      };
+
+      const saved = state.addTransaction(tx);
+      if (saved && saved.ok === false) {
+        account.balance = prevBal;
+        state.data.transactions.shift();
+        audio.playErrorTone();
+        return;
+      }
+
+      updateDashboardUI();
+
+      audio.playEnterTone();
+
+      this.lastReceiptData = {
+        type: 'FUND TRANSFER',
+        amount: state.formatMoney(amount),
+        availBal: state.formatMoney(account.balance),
+        ledgerBal: state.formatMoney(account.balance),
+        cardMasked: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
+        cardholder: card.holder,
+        accountType: account.name.toUpperCase(),
+        ref: ref,
+        timestamp: timestamp
+      };
+      this.triggerEjectedReceiptSnippet();
+
+      document.getElementById('successMainTitle').textContent = 'TRANSFER SUCCESSFUL';
+      document.getElementById('successSubtitle').textContent = `Transferred ${state.formatMoney(amount)} to ${target}.`;
+      document.getElementById('successRefCode').textContent = ref;
+      document.getElementById('successNewBalance').textContent = state.formatMoney(account.balance);
+      document.getElementById('successTimestamp').textContent = timestamp;
+
+      this.switchScreen('screenSuccess', 'Transfer completed successfully.');
+      this.startSuccessCountdown();
+    } finally {
+      this.setTransactionBusy(false);
     }
-
-    if (!amount || amount <= 0) {
-      audio.playErrorTone();
-      showToast('Please enter a valid transfer amount.', 'error');
-      return;
-    }
-
-    const auth = this.authorizeCardTransaction('transfer', amount, sourceKey);
-    if (!auth.authorized) {
-      audio.playErrorTone();
-      showToast(auth.reason, 'error');
-      announceA11y(auth.reason, 'assertive');
-      return;
-    }
-
-    const account = auth.account;
-    const card = auth.card;
-
-    // Atomic Commit: Update Financial State
-    account.balance -= amount;
-
-    const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
-    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-
-    const tx = {
-      id: `TX-${Date.now().toString().slice(-4)}`,
-      type: 'transfer',
-      typeLabel: `Transfer to ${target}${memo ? ' (' + memo + ')' : ''}`,
-      amount: amount,
-      account: sourceKey,
-      cardUsed: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
-      timestamp: timestamp,
-      ref: ref
-    };
-
-    state.addTransaction(tx);
-    updateDashboardUI();
-
-    audio.playEnterTone();
-
-    this.lastReceiptData = {
-      type: 'FUND TRANSFER',
-      amount: state.formatMoney(amount),
-      availBal: state.formatMoney(account.balance),
-      ledgerBal: state.formatMoney(account.balance),
-      cardMasked: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
-      cardholder: card.holder,
-      accountType: account.name.toUpperCase(),
-      ref: ref,
-      timestamp: timestamp
-    };
-    this.triggerEjectedReceiptSnippet();
-
-    document.getElementById('successMainTitle').textContent = 'TRANSFER SUCCESSFUL';
-    document.getElementById('successSubtitle').textContent = `Transferred ${state.formatMoney(amount)} to ${target}.`;
-    document.getElementById('successRefCode').textContent = ref;
-    document.getElementById('successNewBalance').textContent = state.formatMoney(account.balance);
-    document.getElementById('successTimestamp').textContent = timestamp;
-
-    this.switchScreen('screenSuccess', 'Transfer completed successfully.');
-    this.startSuccessCountdown();
   }
 
   // PIN Change Logic
   confirmPinChange() {
-    this.recordUserActivity();
-    const auth = this.authorizeCardTransaction('pinchange');
-    if (!auth.authorized) {
-      audio.playErrorTone();
-      showToast(auth.reason, 'error');
-      announceA11y(auth.reason, 'assertive');
-      return;
+    if (this.currentScreen !== 'screenPinChange' || this.isTransactionBusy) return;
+    this.setTransactionBusy(true);
+    try {
+      this.recordUserActivity();
+      const auth = this.authorizeCardTransaction('pinchange');
+      if (!auth.authorized) {
+        audio.playErrorTone();
+        showToast(auth.reason, 'error');
+        announceA11y(auth.reason, 'assertive');
+        return;
+      }
+
+      const curPin = document.getElementById('currentPinInput').value.trim();
+      const newPin = document.getElementById('newPinInput').value.trim();
+      const confirmPin = document.getElementById('confirmNewPinInput').value.trim();
+      const card = auth.card;
+
+      if (curPin !== card.pin) {
+        audio.playErrorTone();
+        showToast('Current PIN is incorrect.', 'error');
+        return;
+      }
+
+      const pinCheck = InputValidators.validatePin(newPin, { rejectWeak: true, currentPin: card.pin });
+      if (!pinCheck.valid) {
+        audio.playErrorTone();
+        showToast(pinCheck.reason, 'error');
+        return;
+      }
+
+      if (newPin !== confirmPin) {
+        audio.playErrorTone();
+        showToast('New PIN and Confirm PIN do not match.', 'error');
+        return;
+      }
+
+      const prevPin = card.pin;
+      card.pin = newPin;
+      card.pinRetriesLeft = 3;
+      const saved = state.saveState();
+      if (saved && saved.ok === false) {
+        card.pin = prevPin;
+        return;
+      }
+      updateDashboardUI();
+
+      audio.playEnterTone();
+
+      const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
+      const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+      const accKey = card.linkedAccount || 'checking';
+      const accBal = state.getAccount(accKey)?.balance;
+      const tx = {
+        id: `TX-${Date.now().toString().slice(-4)}`,
+        type: 'pinchange',
+        typeLabel: 'ATM PIN Change Update',
+        amount: 0.00,
+        account: accKey,
+        cardUsed: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
+        timestamp: timestamp,
+        ref: ref,
+        status: 'Completed',
+        balanceAfter: Number.isFinite(Number(accBal)) ? accBal : null
+      };
+
+      state.addTransaction(tx);
+      updateDashboardUI();
+
+      document.getElementById('successMainTitle').textContent = 'PIN UPDATED';
+      document.getElementById('successSubtitle').textContent = 'Your card PIN has been updated successfully.';
+      document.getElementById('successRefCode').textContent = ref;
+      document.getElementById('successNewBalance').textContent = 'N/A (Security Action)';
+      document.getElementById('successTimestamp').textContent = timestamp;
+
+      this.switchScreen('screenSuccess', 'PIN changed successfully.');
+      this.startSuccessCountdown();
+    } finally {
+      this.setTransactionBusy(false);
     }
-
-    const curPin = document.getElementById('currentPinInput').value;
-    const newPin = document.getElementById('newPinInput').value;
-    const confirmPin = document.getElementById('confirmNewPinInput').value;
-    const card = auth.card;
-
-    if (curPin !== card.pin) {
-      audio.playErrorTone();
-      showToast('Current PIN is incorrect.', 'error');
-      return;
-    }
-
-    if (newPin.length !== 4 || isNaN(newPin)) {
-      audio.playErrorTone();
-      showToast('New PIN must be exactly 4 digits.', 'error');
-      return;
-    }
-
-    if (newPin !== confirmPin) {
-      audio.playErrorTone();
-      showToast('New PIN and Confirm PIN do not match.', 'error');
-      return;
-    }
-
-    card.pin = newPin;
-    state.saveState();
-    updateDashboardUI();
-
-    audio.playEnterTone();
-
-    const ref = `NX-${Math.floor(100000 + Math.random() * 900000)}`;
-    const timestamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-
-    const tx = {
-      id: `TX-${Date.now().toString().slice(-4)}`,
-      type: 'pinchange',
-      typeLabel: 'ATM PIN Change Update',
-      amount: 0.00,
-      account: card.linkedAccount || 'checking',
-      cardUsed: `${card.number.slice(0, 4)} •••• •••• ${card.number.slice(-4)}`,
-      timestamp: timestamp,
-      ref: ref
-    };
-
-    state.addTransaction(tx);
-    updateDashboardUI();
-
-    document.getElementById('successMainTitle').textContent = 'PIN UPDATED';
-    document.getElementById('successSubtitle').textContent = 'Your card PIN has been updated successfully.';
-    document.getElementById('successRefCode').textContent = ref;
-    document.getElementById('successNewBalance').textContent = 'N/A (Security Action)';
-    document.getElementById('successTimestamp').textContent = timestamp;
-
-    this.switchScreen('screenSuccess', 'PIN changed successfully.');
-    this.startSuccessCountdown();
   }
 
   // Receipt Ejection on Machine
@@ -2103,18 +2600,25 @@ let transientCvvState = {
  * Uses rejection sampling on 16-bit random integers to eliminate modulo bias.
  */
 function generateUniform3DigitCvv() {
-  if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
-    const uint16 = new Uint16Array(1);
-    // 65000 is the largest multiple of 1000 <= 65536.
-    // Numbers >= 65000 are rejected to ensure completely uniform distribution 000..999
-    let attempts = 0;
-    while (attempts < 100) {
-      window.crypto.getRandomValues(uint16);
-      if (uint16[0] < 65000) {
-        const val = uint16[0] % 1000;
-        return String(val).padStart(3, '0');
+  try {
+    if (typeof window !== 'undefined' && window.crypto && typeof window.crypto.getRandomValues === 'function') {
+      const uint16 = new Uint16Array(1);
+      // 65000 is the largest multiple of 1000 <= 65536.
+      // Numbers >= 65000 are rejected to ensure completely uniform distribution 000..999
+      let attempts = 0;
+      while (attempts < 100) {
+        window.crypto.getRandomValues(uint16);
+        if (uint16[0] < 65000) {
+          const val = uint16[0] % 1000;
+          return String(val).padStart(3, '0');
+        }
+        attempts++;
       }
-      attempts++;
+    }
+  } catch (e) {
+    console.warn('Secure CVV generation unavailable:', e);
+    if (typeof showToast === 'function') {
+      showToast('Secure random generator unavailable on this browser.', 'error');
     }
   }
   return null;
@@ -2484,6 +2988,7 @@ function updateDashboardUI() {
 
 function renderTransactionLedger(filter = 'all') {
   const container = document.getElementById('historyListWrapper');
+  if (!container) return;
   container.innerHTML = '';
 
   const list = state.data.transactions.filter(tx => {
@@ -2491,12 +2996,20 @@ function renderTransactionLedger(filter = 'all') {
     return tx.type === filter;
   });
 
+  const exportBtn = document.getElementById('exportCsvBtn');
+  if (exportBtn) {
+    exportBtn.disabled = list.length === 0;
+  }
+
   if (list.length === 0) {
     container.innerHTML = '<div style="text-align:center;padding:1.5rem;font-size:0.8rem;color:var(--text-muted)">No transactions found in this category.</div>';
     return;
   }
 
-  list.forEach(tx => {
+  const maxDomRows = 100;
+  const visibleList = list.slice(0, maxDomRows);
+
+  visibleList.forEach(tx => {
     const isCredit = tx.type === 'deposit';
     const row = document.createElement('div');
     row.className = 'history-item-row';
@@ -2506,29 +3019,44 @@ function renderTransactionLedger(filter = 'all') {
     if (tx.type === 'transfer') iconClass = 'fa-paper-plane';
     if (tx.type === 'pinchange') iconClass = 'fa-key';
 
-    row.innerHTML = `
-      <div class="tx-left">
-        <div class="tx-icon-circle ${tx.type}">
-          <i class="fa-solid ${iconClass}"></i>
-        </div>
-        <div class="tx-meta">
-          <span class="tx-title">${tx.typeLabel}</span>
-          <span class="tx-date">${tx.timestamp} • ${tx.ref}</span>
-        </div>
-      </div>
-      <div class="tx-right">
-        <span class="tx-amount ${isCredit ? 'credit' : 'debit'}">
-          ${isCredit ? '+' : '-'}${state.formatMoney(tx.amount)}
-        </span>
-        <button class="btn-view-receipt-link" data-id="${tx.id}">Receipt</button>
-      </div>
-    `;
+    const leftEl = document.createElement('div');
+    leftEl.className = 'tx-left';
 
-    row.querySelector('.btn-view-receipt-link').addEventListener('click', () => {
+    const iconCircle = document.createElement('div');
+    iconCircle.className = `tx-icon-circle ${tx.type}`;
+    const icon = document.createElement('i');
+    icon.className = `fa-solid ${iconClass}`;
+    iconCircle.appendChild(icon);
+
+    const metaEl = document.createElement('div');
+    metaEl.className = 'tx-meta';
+    const titleEl = document.createElement('span');
+    titleEl.className = 'tx-title';
+    titleEl.textContent = tx.typeLabel || 'Transaction';
+    const dateEl = document.createElement('span');
+    dateEl.className = 'tx-date';
+    dateEl.textContent = `${tx.timestamp} • ${tx.ref}`;
+    metaEl.appendChild(titleEl);
+    metaEl.appendChild(dateEl);
+
+    leftEl.appendChild(iconCircle);
+    leftEl.appendChild(metaEl);
+
+    const rightEl = document.createElement('div');
+    rightEl.className = 'tx-right';
+    const amtEl = document.createElement('span');
+    amtEl.className = `tx-amount ${isCredit ? 'credit' : 'debit'}`;
+    amtEl.textContent = `${isCredit ? '+' : '-'}${state.formatMoney(tx.amount)}`;
+
+    const btn = document.createElement('button');
+    btn.className = 'btn-view-receipt-link';
+    btn.setAttribute('data-id', tx.id);
+    btn.textContent = 'Receipt';
+    btn.addEventListener('click', () => {
       const card = state.getActiveCard();
       const acc = state.getAccount(tx.account);
       atm.openThermalReceiptModal({
-        type: tx.type.toUpperCase(),
+        type: String(tx.type || 'transaction').toUpperCase(),
         amount: state.formatMoney(tx.amount),
         availBal: state.formatMoney(acc.balance),
         ledgerBal: state.formatMoney(acc.balance),
@@ -2540,8 +3068,19 @@ function renderTransactionLedger(filter = 'all') {
       });
     });
 
+    rightEl.appendChild(amtEl);
+    rightEl.appendChild(btn);
+    row.appendChild(leftEl);
+    row.appendChild(rightEl);
     container.appendChild(row);
   });
+
+  if (list.length > maxDomRows) {
+    const capNote = document.createElement('div');
+    capNote.style.cssText = 'text-align:center;padding:0.75rem;font-size:0.72rem;color:var(--text-muted);';
+    capNote.textContent = `Showing latest ${maxDomRows} of ${list.length} records. Export CSV for complete history.`;
+    container.appendChild(capNote);
+  }
 }
 
 
@@ -3463,6 +4002,92 @@ class ProfileController {
 
 const profileController = new ProfileController();
 
+function escapeCsvField(value) {
+  let str = String(value == null ? '' : value)
+    .replace(/\r\n/g, ' ')
+    .replace(/[\r\n]/g, ' ');
+  // Neutralize spreadsheet formula injection (DDE/macro prefixes)
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+  return `"${str.replace(/"/g, '""')}"`;
+}
+
+function formatCsvAccountLabel(accountKey) {
+  if (accountKey === 'checking') return 'Checking (7819)';
+  if (accountKey === 'savings') return 'Savings (9204)';
+  return String(accountKey || 'Checking');
+}
+
+function buildCsvExportPayload(transactions, now = new Date()) {
+  if (!Array.isArray(transactions) || transactions.length === 0) {
+    return { empty: true, filename: '', content: '' };
+  }
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const filename = `nexusbank_statement_${yyyy}-${mm}-${dd}.csv`;
+
+  const headers = ['Timestamp', 'Reference_ID', 'Type', 'Account', 'Amount_INR', 'Status', 'Balance_After'];
+  const rows = [headers.map(escapeCsvField).join(',')];
+
+  transactions.forEach(t => {
+    const balAfter = Number.isFinite(Number(t.balanceAfter)) ? Number(t.balanceAfter).toFixed(2) : '';
+    rows.push([
+      escapeCsvField(t.timestamp || ''),
+      escapeCsvField(t.ref || t.id || ''),
+      escapeCsvField(t.typeLabel || t.type || ''),
+      escapeCsvField(formatCsvAccountLabel(t.account)),
+      escapeCsvField(Number(t.amount || 0).toFixed(2)),
+      escapeCsvField(t.status || 'Completed'),
+      escapeCsvField(balAfter)
+    ].join(','));
+  });
+
+  // Prepend UTF-8 BOM (\uFEFF) so Excel preserves Unicode characters (e.g. ₹) cleanly
+  return {
+    empty: false,
+    filename,
+    content: '\uFEFF' + rows.join('\r\n') + '\r\n'
+  };
+}
+
+function downloadCsvExport(transactions) {
+  const payload = buildCsvExportPayload(transactions);
+  if (payload.empty) {
+    showToast('No transactions match the active filter to export.', 'info');
+    return false;
+  }
+  let url = '';
+  try {
+    const blob = new Blob([payload.content], { type: 'text/csv;charset=utf-8;' });
+    url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = payload.filename;
+    a.click();
+    showToast(`Exported ${transactions.length} transactions to ${payload.filename}.`, 'success');
+    return true;
+  } catch (err) {
+    console.warn('CSV export download failed:', err);
+    showToast('Unable to export CSV file on this browser.', 'error');
+    return false;
+  } finally {
+    if (url) URL.revokeObjectURL(url);
+  }
+}
+
+function debounce(fn, delayMs = 150) {
+  let timerId = null;
+  return (...args) => {
+    if (timerId) clearTimeout(timerId);
+    timerId = setTimeout(() => {
+      timerId = null;
+      fn(...args);
+    }, delayMs);
+  };
+}
+
 
 // =============================================================================
 // 6. EVENT LISTENERS & WIRING
@@ -3478,13 +4103,23 @@ function initEventListeners() {
 
   // Physical Computer Keyboard Listener
   document.addEventListener('keydown', (e) => {
-    if (document.activeElement.tagName === 'INPUT' && document.activeElement.id !== 'withdrawAmountInput') {
-      return; // Allow typing in regular modal forms
+    const activeModal = document.querySelector('.modal-overlay.active');
+    if (e.key === 'Escape' && activeModal) {
+      activeModal.classList.remove('active');
+      return;
+    }
+
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'SELECT') && document.activeElement.id !== 'withdrawAmountInput') {
+      return; // Allow typing in regular modal and transaction forms
     }
 
     if (e.key >= '0' && e.key <= '9') {
       atm.handleKeypadPress(e.key);
     } else if (e.key === 'Enter') {
+      if (document.activeElement && document.activeElement.classList.contains('menu-item')) {
+        document.activeElement.click();
+        return;
+      }
       atm.handleKeypadPress('ENTER');
     } else if (e.key === 'Backspace' || e.key === 'Delete') {
       atm.handleKeypadPress('CLEAR');
@@ -3529,9 +4164,9 @@ function initEventListeners() {
   document.getElementById('cardlessOtpSubmitBtn')?.addEventListener('click', () => atm.authorizeCardlessOtp());
   document.getElementById('cardlessBackBtn')?.addEventListener('click', () => atm.switchScreen('screenWelcome'));
 
-  // Main Menu On-Screen Touch Items
+  // Main Menu On-Screen Touch & Keyboard Items
   document.querySelectorAll('.menu-item').forEach(item => {
-    item.addEventListener('click', () => {
+    const activateMenuItem = () => {
       const action = item.getAttribute('data-action');
       if (action === 'balance') atm.openBalanceScreen();
       if (action === 'fastcash') atm.openFastCashScreen();
@@ -3541,6 +4176,13 @@ function initEventListeners() {
       if (action === 'statement') atm.openStatementScreen();
       if (action === 'pinchange') atm.openPinChangeScreen();
       if (action === 'exit') atm.ejectCard();
+    };
+    item.addEventListener('click', activateMenuItem);
+    item.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        activateMenuItem();
+      }
     });
   });
 
@@ -3607,10 +4249,11 @@ function initEventListeners() {
     btn.addEventListener('click', () => {
       const denom = btn.getAttribute('data-denom');
       const isPlus = btn.classList.contains('plus');
-      if (isPlus) {
-        atm.depositCounts[denom]++;
-      } else if (atm.depositCounts[denom] > 0) {
-        atm.depositCounts[denom]--;
+      const current = Number(atm.depositCounts[denom]) || 0;
+      if (isPlus && current < 10000) {
+        atm.depositCounts[denom] = current + 1;
+      } else if (!isPlus && current > 0) {
+        atm.depositCounts[denom] = Math.max(0, current - 1);
       }
       atm.updateDepositCounterDisplay();
       audio.playKeypadBeep(isPlus ? 1300 : 900);
@@ -3644,6 +4287,9 @@ function initEventListeners() {
 
   // Mini Statement Screen
   document.getElementById('statementPrintBtn')?.addEventListener('click', () => atm.printMiniStatementSlip());
+  document.getElementById('statementExportCsvBtn')?.addEventListener('click', () => {
+    downloadCsvExport(state.data.transactions);
+  });
   document.getElementById('statementBackBtn')?.addEventListener('click', () => atm.switchScreen('screenMainMenu'));
 
   // Success Screen
@@ -3679,6 +4325,9 @@ function initEventListeners() {
   document.getElementById('freezeCardToggle')?.addEventListener('change', (e) => {
     const card = state.getActiveCard();
     card.frozen = e.target.checked;
+    if (!card.frozen) {
+      card.pinRetriesLeft = 3;
+    }
     state.saveState();
     updateDashboardUI();
 
@@ -3718,7 +4367,8 @@ function initEventListeners() {
   // Meaningful user activity tracking on physical and simulated ATM elements
   ['keydown', 'mousedown', 'touchstart'].forEach(evt => {
     document.addEventListener(evt, (e) => {
-      const isAtm = e.target.closest('#atmMachineChassis') || 
+      const isAtm = e.target.closest('#kioskSection') ||
+                    e.target.closest('.atm-chassis') ||
                     e.target.closest('.atm-screen') || 
                     e.target.closest('.key-btn') || 
                     e.target.closest('.side-key') || 
@@ -3779,19 +4429,11 @@ function initEventListeners() {
     });
   });
 
-  // Export CSV
+  // Export CSV (Respects active ledger filter, RFC-4180 + formula sanitization, UTF-8 BOM for ₹)
   document.getElementById('exportCsvBtn')?.addEventListener('click', () => {
-    let csv = 'ID,Date,Type,Description,Amount,Account,Card,Ref\n';
-    state.data.transactions.forEach(t => {
-      csv += `"${t.id}","${t.timestamp}","${t.type}","${t.typeLabel}","${t.amount}","${t.account}","${t.cardUsed}","${t.ref}"\n`;
-    });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `nexus_atm_statement_${Date.now()}.csv`;
-    a.click();
-    showToast('Transaction statement exported to CSV.', 'success');
+    const activeFilter = document.querySelector('#historyFilterBtns .filter-btn.active')?.getAttribute('data-filter') || 'all';
+    const filtered = state.data.transactions.filter(tx => activeFilter === 'all' || tx.type === activeFilter);
+    downloadCsvExport(filtered);
   });
 
   // Currency Selector
@@ -3944,13 +4586,21 @@ function initEventListeners() {
  24/7 SUPPORT: 1-800-NEXUS-ATM
 ========================================
     `;
-    const blob = new Blob([receiptText], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `receipt_${r.ref}.txt`;
-    a.click();
-    showToast('Receipt saved to text file.', 'success');
+    let url = '';
+    try {
+      const blob = new Blob([receiptText], { type: 'text/plain;charset=utf-8;' });
+      url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `receipt_${r.ref}.txt`;
+      a.click();
+      showToast('Receipt saved to text file.', 'success');
+    } catch (err) {
+      console.warn('Receipt download failed:', err);
+      showToast('Unable to save receipt file on this browser.', 'error');
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+    }
   });
 
   // Card 3D Flip on Click
@@ -4274,7 +4924,12 @@ class VoiceCommandController {
     } else if (text.includes('receipt') || text.includes('print')) {
       atm.printLastTransactionReceipt();
     } else if (text.includes('vault') || text.includes('diagnostic')) {
-      openDiagnosticsModal();
+      if (profileController.isOfficial()) {
+        openDiagnosticsModal();
+      } else {
+        showToast('Restricted: Bank Official authorization required to access Vault & Diagnostics.', 'info');
+        profileController.openAuthModal();
+      }
     } else {
       audio.speak('Command not recognized. Showing ATM menu.');
     }
@@ -4384,8 +5039,15 @@ function showToast(message, type = 'info') {
 
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
-  const icon = type === 'success' ? 'fa-circle-check' : (type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info');
-  toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+  toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+  const iconName = type === 'success' ? 'fa-circle-check' : (type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info');
+  const iconEl = document.createElement('i');
+  iconEl.className = `fa-solid ${iconName}`;
+  const spanEl = document.createElement('span');
+  spanEl.textContent = ` ${String(message == null ? '' : message)}`;
+  toast.appendChild(iconEl);
+  toast.appendChild(spanEl);
   
   container.appendChild(toast);
   setTimeout(() => {
@@ -4418,6 +5080,49 @@ function bootstrapApplication() {
     initEventListeners();
     if (typeof profileController !== 'undefined') {
       profileController.setProfile('user');
+    }
+
+    // Debounced resize handler to avoid layout thrashing on window resize
+    window.addEventListener('resize', debounce(() => {
+      updateDashboardUI();
+    }, 150), { passive: true });
+
+    // Frame-synchronized 3D card pointer tilt (disabled on touch or reduced-motion)
+    const cardWrapper = document.getElementById('card3dWrapper');
+    const card3d = document.getElementById('card3d');
+    const canHover = typeof window.matchMedia === 'function' ? window.matchMedia('(hover: hover)').matches : false;
+    const prefersReducedMotion = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)').matches : false;
+    if (cardWrapper && card3d && canHover && !prefersReducedMotion) {
+      let tiltRafId = null;
+      cardWrapper.addEventListener('pointermove', (e) => {
+        if (tiltRafId) return;
+        tiltRafId = requestAnimationFrame(() => {
+          tiltRafId = null;
+          const rect = cardWrapper.getBoundingClientRect();
+          if (!rect.width || !rect.height) return;
+          const x = (e.clientX - rect.left) / rect.width - 0.5;
+          const y = (e.clientY - rect.top) / rect.height - 0.5;
+          const baseFlip = card3d.classList.contains('flipped') ? 180 : 0;
+          const rotY = (baseFlip + x * 10).toFixed(2);
+          const rotX = (-y * 10).toFixed(2);
+          card3d.style.willChange = 'transform';
+          card3d.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+        });
+      }, { passive: true });
+      cardWrapper.addEventListener('pointerleave', () => {
+        if (tiltRafId) {
+          cancelAnimationFrame(tiltRafId);
+          tiltRafId = null;
+        }
+        card3d.style.transform = '';
+        card3d.style.willChange = 'auto';
+      });
+    }
+
+    // Surface any LocalStorage corruption recovery message transparently on load
+    if (state && state.recoveryWarning) {
+      showToast(state.recoveryWarning, 'error');
+      announceA11y(state.recoveryWarning, 'assertive');
     }
   } catch (err) {
     console.error('Error during Nexus ATM bootstrap:', err);

@@ -387,28 +387,28 @@
                     <div class="menu-options-grid">
                       <!-- Left Menu Options (Aligned with F1-F4) -->
                       <div class="menu-col menu-col-left">
-                        <div class="menu-item" data-action="balance">
+                        <div class="menu-item" data-action="balance" role="button" tabindex="0">
                           <span class="menu-arrow"><i class="fa-solid fa-arrow-left"></i></span>
                           <div class="menu-text">
                             <span class="title">Check Balance</span>
                             <span class="desc">Inquiry & Mini-Statement</span>
                           </div>
                         </div>
-                        <div class="menu-item" data-action="fastcash">
+                        <div class="menu-item" data-action="fastcash" role="button" tabindex="0">
                           <span class="menu-arrow"><i class="fa-solid fa-arrow-left"></i></span>
                           <div class="menu-text">
                             <span class="title">Fast Cash</span>
                             <span class="desc">Quick ₹500, ₹1000, ₹2000, ₹5000</span>
                           </div>
                         </div>
-                        <div class="menu-item" data-action="withdraw">
+                        <div class="menu-item" data-action="withdraw" role="button" tabindex="0">
                           <span class="menu-arrow"><i class="fa-solid fa-arrow-left"></i></span>
                           <div class="menu-text">
                             <span class="title">Withdraw Cash</span>
                             <span class="desc">Custom Amount & Notes</span>
                           </div>
                         </div>
-                        <div class="menu-item" data-action="deposit">
+                        <div class="menu-item" data-action="deposit" role="button" tabindex="0">
                           <span class="menu-arrow"><i class="fa-solid fa-arrow-left"></i></span>
                           <div class="menu-text">
                             <span class="title">Deposit Funds</span>
@@ -419,28 +419,28 @@
 
                       <!-- Right Menu Options (Aligned with F5-F8) -->
                       <div class="menu-col menu-col-right">
-                        <div class="menu-item" data-action="transfer">
+                        <div class="menu-item" data-action="transfer" role="button" tabindex="0">
                           <div class="menu-text">
                             <span class="title">Fund Transfer</span>
                             <span class="desc">Pay Accounts & UPI</span>
                           </div>
                           <span class="menu-arrow"><i class="fa-solid fa-arrow-right"></i></span>
                         </div>
-                        <div class="menu-item" data-action="statement">
+                        <div class="menu-item" data-action="statement" role="button" tabindex="0">
                           <div class="menu-text">
                             <span class="title">Mini Statement</span>
                             <span class="desc">Recent Activity & Print</span>
                           </div>
                           <span class="menu-arrow"><i class="fa-solid fa-arrow-right"></i></span>
                         </div>
-                        <div class="menu-item" data-action="pinchange">
+                        <div class="menu-item" data-action="pinchange" role="button" tabindex="0">
                           <div class="menu-text">
                             <span class="title">Change PIN</span>
                             <span class="desc">Update 4-Digit Passcode</span>
                           </div>
                           <span class="menu-arrow"><i class="fa-solid fa-arrow-right"></i></span>
                         </div>
-                        <div class="menu-item danger" data-action="exit">
+                        <div class="menu-item danger" data-action="exit" role="button" tabindex="0">
                           <div class="menu-text">
                             <span class="title">Exit / Return Card</span>
                             <span class="desc">End Session Securely</span>
@@ -599,7 +599,7 @@
 
                     <div class="limit-status-line">
                       <span>Daily Limit Remaining: <strong id="dailyLimitRemaining">₹25,000.00</strong></span>
-                      <span id="withdrawErrorMsg" class="text-danger"></span>
+                      <span id="withdrawErrorMsg" class="text-danger" role="alert" aria-live="assertive"></span>
                     </div>
 
                     <div class="screen-actions-row">
@@ -859,6 +859,9 @@
                     <div class="statement-footer-actions">
                       <button class="screen-action-btn" id="statementPrintBtn">
                         <i class="fa-solid fa-receipt"></i> Print Mini-Statement (F3)
+                      </button>
+                      <button class="screen-action-btn" id="statementExportCsvBtn">
+                        <i class="fa-solid fa-file-csv"></i> Export CSV
                       </button>
                       <button class="screen-action-btn back" id="statementBackBtn">
                         <i class="fa-solid fa-arrow-left"></i> Back to Main Menu (F8)
