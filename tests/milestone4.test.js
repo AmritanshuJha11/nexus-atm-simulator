@@ -514,9 +514,19 @@ describe('Milestone 4 Phase A/C: Audio, Speech Fallback & CSV Export (AT-37 to A
     assert.ok(stats.audioResumeCalls >= 1, 'Suspended AudioContext must call resume()');
     assert.strictEqual(stats.oscillatorCount, 1, 'Rapid keypresses within 25ms must debounce to prevent stacking');
 
+    exp.audio.playCashMotorSound();
+    const afterMotorCount = env.getAudioStats().oscillatorCount;
+    assert.ok(afterMotorCount > 1, 'Cash dispenser motor + flutter + ready chime should synthesize cleanly');
+
+    exp.audio.playReceiptPrinterSound();
+    const afterPrinterCount = env.getAudioStats().oscillatorCount;
+    assert.ok(afterPrinterCount > afterMotorCount, 'Receipt printer stepper + cutter snip should synthesize cleanly');
+
     exp.audio.soundEnabled = false;
     exp.audio.playEnterTone();
-    assert.strictEqual(env.getAudioStats().oscillatorCount, 1, 'Mute must block sound synthesis');
+    exp.audio.playCashMotorSound();
+    exp.audio.playReceiptPrinterSound();
+    assert.strictEqual(env.getAudioStats().oscillatorCount, afterPrinterCount, 'Mute must block sound synthesis');
   });
 
   test('AT-39: Unavailable speechSynthesis degrades cleanly without crashing', () => {

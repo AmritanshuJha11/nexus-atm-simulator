@@ -116,56 +116,150 @@ class AudioEngine {
   playCashMotorSound() {
     if (!this.soundEnabled) return;
     try {
-      this.initContext();
+      if (!this.initContext()) return;
       const now = this.ctx.currentTime;
-      
-      // Motor drone
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(140, now);
-      osc.frequency.linearRampToValueAtTime(220, now + 1.2);
-      osc.frequency.linearRampToValueAtTime(120, now + 2.5);
-      gain.gain.setValueAtTime(0.15, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 2.6);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now);
-      osc.stop(now + 2.6);
 
-      // Rapid tick flutter for bill counting
-      for (let i = 0; i < 18; i++) {
-        const tickOsc = this.ctx.createOscillator();
-        const tickGain = this.ctx.createGain();
-        tickOsc.type = 'square';
-        tickOsc.frequency.setValueAtTime(1800 + Math.random() * 400, now + 0.3 + i * 0.09);
-        tickGain.gain.setValueAtTime(0.08, now + 0.3 + i * 0.09);
-        tickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3 + i * 0.09 + 0.03);
-        tickOsc.connect(tickGain);
-        tickGain.connect(this.ctx.destination);
-        tickOsc.start(now + 0.3 + i * 0.09);
-        tickOsc.stop(now + 0.3 + i * 0.09 + 0.03);
+      // Subtle low servo hum (warm triangle + sub-sine, replacing harsh sawtooth buzz)
+      const motorOsc = this.ctx.createOscillator();
+      const motorGain = this.ctx.createGain();
+      motorOsc.type = 'triangle';
+      motorOsc.frequency.setValueAtTime(95, now);
+      motorOsc.frequency.linearRampToValueAtTime(128, now + 0.5);
+      motorOsc.frequency.linearRampToValueAtTime(112, now + 1.8);
+      motorOsc.frequency.linearRampToValueAtTime(78, now + 2.25);
+      motorGain.gain.setValueAtTime(0.001, now);
+      motorGain.gain.linearRampToValueAtTime(0.065, now + 0.12);
+      motorGain.gain.setValueAtTime(0.055, now + 1.8);
+      motorGain.gain.exponentialRampToValueAtTime(0.001, now + 2.3);
+      motorOsc.connect(motorGain);
+      motorGain.connect(this.ctx.destination);
+      motorOsc.start(now);
+      motorOsc.stop(now + 2.32);
+
+      // Soft mechanical bill-flutter impulses (warm damped pitch drops instead of harsh square ticks)
+      for (let i = 0; i < 14; i++) {
+        const t = now + 0.28 + i * 0.115;
+        const flipOsc = this.ctx.createOscillator();
+        const flipGain = this.ctx.createGain();
+        flipOsc.type = 'triangle';
+        const startHz = 260 + (i % 3) * 28;
+        flipOsc.frequency.setValueAtTime(startHz, t);
+        flipOsc.frequency.exponentialRampToValueAtTime(95, t + 0.045);
+        flipGain.gain.setValueAtTime(0.065, t);
+        flipGain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+        flipOsc.connect(flipGain);
+        flipGain.connect(this.ctx.destination);
+        flipOsc.start(t);
+        flipOsc.stop(t + 0.055);
       }
+
+      // Optional filtered air/paper-shutter brush in browsers supporting AudioBuffer + BiquadFilter
+      if (typeof this.ctx.createBuffer === 'function' && typeof this.ctx.createBufferSource === 'function' && typeof this.ctx.createBiquadFilter === 'function' && this.ctx.sampleRate) {
+        const dur = 1.75;
+        const len = Math.floor(this.ctx.sampleRate * dur);
+        const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const ch = buf.getChannelData(0);
+        for (let s = 0; s < len; s++) {
+          // Envelope-pulsed subtle paper texture synced with bill counting
+          const pulse = Math.pow(Math.abs(Math.sin((s / this.ctx.sampleRate) * Math.PI * 8.7)), 3);
+          ch[s] = (Math.random() * 2 - 1) * 0.35 * (0.25 + 0.75 * pulse);
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buf;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(950, now + 0.25);
+        filter.Q.setValueAtTime(1.4, now + 0.25);
+        const nGain = this.ctx.createGain();
+        nGain.gain.setValueAtTime(0.001, now + 0.25);
+        nGain.gain.linearRampToValueAtTime(0.07, now + 0.4);
+        nGain.gain.setValueAtTime(0.065, now + 1.75);
+        nGain.gain.exponentialRampToValueAtTime(0.001, now + 2.0);
+        noise.connect(filter);
+        filter.connect(nGain);
+        nGain.connect(this.ctx.destination);
+        noise.start(now + 0.25);
+        noise.stop(now + 2.02);
+      }
+
+      // Gentle cash-ready confirmation chime as dispenser opens
+      [587.33, 880].forEach((freq, idx) => {
+        const t = now + 2.28 + idx * 0.09;
+        const chimeOsc = this.ctx.createOscillator();
+        const chimeGain = this.ctx.createGain();
+        chimeOsc.type = 'sine';
+        chimeOsc.frequency.setValueAtTime(freq, t);
+        chimeGain.gain.setValueAtTime(0.08, t);
+        chimeGain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+        chimeOsc.connect(chimeGain);
+        chimeGain.connect(this.ctx.destination);
+        chimeOsc.start(t);
+        chimeOsc.stop(t + 0.24);
+      });
     } catch (e) {}
   }
 
   playReceiptPrinterSound() {
     if (!this.soundEnabled) return;
     try {
-      this.initContext();
+      if (!this.initContext()) return;
       const now = this.ctx.currentTime;
-      for (let i = 0; i < 12; i++) {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(2400 + (i % 2) * 300, now + i * 0.06);
-        gain.gain.setValueAtTime(0.06, now + i * 0.06);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.04);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now + i * 0.06);
-        osc.stop(now + i * 0.06 + 0.04);
+
+      // Quiet thermal stepper feed (soft low-mid triangle pulses instead of piercing 2.7kHz sawtooth)
+      for (let i = 0; i < 8; i++) {
+        const t = now + i * 0.055;
+        const stepOsc = this.ctx.createOscillator();
+        const stepGain = this.ctx.createGain();
+        stepOsc.type = 'triangle';
+        stepOsc.frequency.setValueAtTime(340 + (i % 2) * 35, t);
+        stepOsc.frequency.exponentialRampToValueAtTime(210, t + 0.04);
+        stepGain.gain.setValueAtTime(0.04, t);
+        stepGain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+        stepOsc.connect(stepGain);
+        stepGain.connect(this.ctx.destination);
+        stepOsc.start(t);
+        stepOsc.stop(t + 0.05);
       }
+
+      // Subtle thermal paper glide noise in supported browsers
+      if (typeof this.ctx.createBuffer === 'function' && typeof this.ctx.createBufferSource === 'function' && typeof this.ctx.createBiquadFilter === 'function' && this.ctx.sampleRate) {
+        const dur = 0.44;
+        const len = Math.floor(this.ctx.sampleRate * dur);
+        const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const ch = buf.getChannelData(0);
+        for (let s = 0; s < len; s++) {
+          ch[s] = (Math.random() * 2 - 1) * 0.25;
+        }
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buf;
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(1650, now);
+        filter.Q.setValueAtTime(1.8, now);
+        const nGain = this.ctx.createGain();
+        nGain.gain.setValueAtTime(0.001, now);
+        nGain.gain.linearRampToValueAtTime(0.04, now + 0.05);
+        nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.43);
+        noise.connect(filter);
+        filter.connect(nGain);
+        nGain.connect(this.ctx.destination);
+        noise.start(now);
+        noise.stop(now + 0.45);
+      }
+
+      // Single crisp paper-cutter snip at the end
+      const cutTime = now + 0.46;
+      const cutOsc = this.ctx.createOscillator();
+      const cutGain = this.ctx.createGain();
+      cutOsc.type = 'triangle';
+      cutOsc.frequency.setValueAtTime(520, cutTime);
+      cutOsc.frequency.exponentialRampToValueAtTime(130, cutTime + 0.045);
+      cutGain.gain.setValueAtTime(0.075, cutTime);
+      cutGain.gain.exponentialRampToValueAtTime(0.001, cutTime + 0.05);
+      cutOsc.connect(cutGain);
+      cutGain.connect(this.ctx.destination);
+      cutOsc.start(cutTime);
+      cutOsc.stop(cutTime + 0.055);
     } catch (e) {}
   }
 
